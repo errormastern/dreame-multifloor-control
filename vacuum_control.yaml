@@ -1,16 +1,13 @@
 blueprint:
   name: "🤖 Dreame Vacuum Multi-Button Control"
   description: |
+    *🤖 Dreame Vacuum Multi-Button Control*
     **Version: 0.8.4**
 
+    **Main Features:**
     Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.
     Intelligent washing detection and configurable delay for easy robot pickup.
     Optional: Uses room-specific settings from Dreame app (cleaning order, suction, water, repeats per room).
-
-    **v0.8.3 Changes:** Fixed device_trackers type check using HA-documented 'is string_like' test
-    **v0.8.2 Changes:** Multi-recipient notifications - select multiple persons (presence-checked) and/or notification groups
-    **v0.8.1 Changes:** Improved robustness - entity availability checks and error handling prevent automation aborts when entities are unavailable
-    **v0.8.0 Changes:** Added customized cleaning support - uses room settings from Dreame app when available (cleaning sequence, per-room suction/water/repeats)
 
     **Main Features:**
     🤖 Auto-detection of vacuum entities (select vacuum, rest auto-detected)
@@ -18,6 +15,11 @@ blueprint:
     🔔 Notification workflow with action buttons for transport preparation
     ⏭️ Manual control via MQTT, device triggers, state changes, or events
     🗺️ Segment-based Map cleaning with configurable repeats
+
+    **v0.8.3 Changes:** Fixed device_trackers type check using HA-documented 'is string_like' test
+    **v0.8.2 Changes:** Multi-recipient notifications - select multiple persons (presence-checked) and/or notification groups
+    **v0.8.1 Changes:** Improved robustness - entity availability checks and error handling prevent automation aborts when entities are unavailable
+    **v0.8.0 Changes:** Added customized cleaning support - uses room settings from Dreame app when available (cleaning sequence, per-room suction/water/repeats)
 
     **Requirements:**
     • Home Assistant ≥ 2024.10.0
