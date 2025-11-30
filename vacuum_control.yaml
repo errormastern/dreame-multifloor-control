@@ -1,12 +1,13 @@
 blueprint:
   name: "🤖 Dreame Vacuum Multi-Button Control"
   description: |
-    **Version: 0.8.2**
+    **Version: 0.8.3**
 
     Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.
     Intelligent washing detection and configurable delay for easy robot pickup.
     Optional: Uses room-specific settings from Dreame app (cleaning order, suction, water, repeats per room).
 
+    **v0.8.3 Changes:** Fixed device_trackers type check using HA-documented 'is string_like' test
     **v0.8.2 Changes:** Multi-recipient notifications - select multiple persons (presence-checked) and/or notification groups
     **v0.8.1 Changes:** Improved robustness - entity availability checks and error handling prevent automation aborts when entities are unavailable
     **v0.8.0 Changes:** Added customized cleaning support - uses room settings from Dreame app when available (cleaning sequence, per-room suction/water/repeats)
@@ -2165,7 +2166,7 @@ actions:
                           {% if is_state(person, 'home') %}
                             {% set trackers = state_attr(person, 'device_trackers') %}
                             {% if trackers %}
-                              {% set first_tracker = trackers if trackers is string else (trackers | first) %}
+                              {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                               {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
                                 {% set result = result + ['notify.mobile_app_' + tracker_name] %}
@@ -2351,7 +2352,7 @@ actions:
                           {% if is_state(person, 'home') %}
                             {% set trackers = state_attr(person, 'device_trackers') %}
                             {% if trackers %}
-                              {% set first_tracker = trackers if trackers is string else (trackers | first) %}
+                              {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                               {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
                                 {% set result = result + ['notify.mobile_app_' + tracker_name] %}
@@ -2537,7 +2538,7 @@ actions:
                           {% if is_state(person, 'home') %}
                             {% set trackers = state_attr(person, 'device_trackers') %}
                             {% if trackers %}
-                              {% set first_tracker = trackers if trackers is string else (trackers | first) %}
+                              {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                               {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
                                 {% set result = result + ['notify.mobile_app_' + tracker_name] %}
@@ -2723,7 +2724,7 @@ actions:
                           {% if is_state(person, 'home') %}
                             {% set trackers = state_attr(person, 'device_trackers') %}
                             {% if trackers %}
-                              {% set first_tracker = trackers if trackers is string else (trackers | first) %}
+                              {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                               {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
                                 {% set result = result + ['notify.mobile_app_' + tracker_name] %}
@@ -2909,7 +2910,7 @@ actions:
                           {% if is_state(person, 'home') %}
                             {% set trackers = state_attr(person, 'device_trackers') %}
                             {% if trackers %}
-                              {% set first_tracker = trackers if trackers is string else (trackers | first) %}
+                              {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                               {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
                                 {% set result = result + ['notify.mobile_app_' + tracker_name] %}
@@ -3096,7 +3097,7 @@ actions:
                           {% if is_state(person, 'home') %}
                             {% set trackers = state_attr(person, 'device_trackers') %}
                             {% if trackers %}
-                              {% set first_tracker = trackers if trackers is string else (trackers | first) %}
+                              {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                               {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
                                 {% set result = result + ['notify.mobile_app_' + tracker_name] %}
@@ -3348,7 +3349,7 @@ actions:
                       {% if is_state(person, 'home') %}
                         {% set trackers = state_attr(person, 'device_trackers') %}
                         {% if trackers %}
-                          {% set first_tracker = trackers if trackers is string else (trackers | first) %}
+                          {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                           {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                           {% if tracker_name | length > 0 %}
                             {% set result = result + ['notify.mobile_app_' + tracker_name] %}
@@ -3624,7 +3625,7 @@ actions:
                       {% if is_state(person, 'home') %}
                         {% set trackers = state_attr(person, 'device_trackers') %}
                         {% if trackers %}
-                          {% set first_tracker = trackers if trackers is string else (trackers | first) %}
+                          {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                           {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                           {% if tracker_name | length > 0 %}
                             {% set result = result + ['notify.mobile_app_' + tracker_name] %}
@@ -3879,7 +3880,7 @@ actions:
                       {% if is_state(person, 'home') %}
                         {% set trackers = state_attr(person, 'device_trackers') %}
                         {% if trackers %}
-                          {% set first_tracker = trackers if trackers is string else (trackers | first) %}
+                          {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                           {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                           {% if tracker_name | length > 0 %}
                             {% set result = result + ['notify.mobile_app_' + tracker_name] %}
@@ -4157,7 +4158,7 @@ actions:
                       {% if is_state(person, 'home') %}
                         {% set trackers = state_attr(person, 'device_trackers') %}
                         {% if trackers %}
-                          {% set first_tracker = trackers if trackers is string else (trackers | first) %}
+                          {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                           {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                           {% if tracker_name | length > 0 %}
                             {% set result = result + ['notify.mobile_app_' + tracker_name] %}
@@ -4412,7 +4413,7 @@ actions:
                       {% if is_state(person, 'home') %}
                         {% set trackers = state_attr(person, 'device_trackers') %}
                         {% if trackers %}
-                          {% set first_tracker = trackers if trackers is string else (trackers | first) %}
+                          {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                           {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                           {% if tracker_name | length > 0 %}
                             {% set result = result + ['notify.mobile_app_' + tracker_name] %}
@@ -4690,7 +4691,7 @@ actions:
                       {% if is_state(person, 'home') %}
                         {% set trackers = state_attr(person, 'device_trackers') %}
                         {% if trackers %}
-                          {% set first_tracker = trackers if trackers is string else (trackers | first) %}
+                          {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                           {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                           {% if tracker_name | length > 0 %}
                             {% set result = result + ['notify.mobile_app_' + tracker_name] %}
