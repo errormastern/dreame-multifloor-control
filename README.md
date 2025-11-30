@@ -1,148 +1,183 @@
-# 🤖 Dreame Vacuum - Multi-Floor Control
+# Dreame Vacuum – Multi-Floor Control
 
 [![Version](https://img.shields.io/badge/version-0.8.3-blue.svg)](https://github.com/errormastern/dreame-multifloor-control/releases)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.10%2B-green.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-stable-green.svg)](https://github.com/errormastern/dreame-multifloor-control)
 
-Control Dreame vacuum cleaners across multiple floors with scheduled cleaning and notification-based transport workflow. Maps with base stations clean automatically; maps without base stations use notifications with action buttons for manual transport.
+A Home Assistant blueprint for controlling Dreame vacuums across multiple floors. Supports scheduled cleaning with automatic transport notifications and manual control via buttons or other triggers.
 
-## ✨ Features
 
-🤖 Auto-detection of vacuum entities (select vacuum, rest detected automatically)<br>
-📅 Per-map schedules with sweep/mop modes (3 maps, 6 schedules total)<br>
-🔔 Notification workflow with action buttons for transport preparation<br>
-👥 **NEW:** Multi-recipient notifications - select multiple persons (presence-checked) and/or groups<br>
-📱 iOS lock screen notifications with configurable interruption levels<br>
-🎛️ Manual control via MQTT, device triggers, state changes, or events<br>
-🏠 Segment-based cleaning with configurable repeats per map<br>
-✨ **NEW:** Optional customized cleaning - uses room settings from Dreame app (cleaning order, per-room suction/water/repeats)<br>
-⚠️ Safety checks: Schedule conflict detection, dock status validation, emergency map validation<br>
-🌐 Localization support for multilingual notifications<br>
-🐛 Debug mode with timing measurements and execution tracking
+## Features
 
-## 📋 Requirements
+- Auto-detection of vacuum entities (select vacuum, rest detected automatically)
+- Per-map schedules with sweep/mop modes (3 maps, 6 schedules)
+- Notification workflow with action buttons for transport
+- Multi-recipient notifications with presence checking
+- Segment-based cleaning with configurable repeats
+- Optional customised cleaning using room settings from Dreame app
+- Safety checks: schedule conflicts, dock status, emergency map validation
+- Debug mode with timing measurements
+
+
+## Requirements
 
 - Home Assistant ≥ 2024.10.0
 - [Dreame Vacuum Integration](https://github.com/Tasshack/dreame-vacuum) ≥ v2.0.0b19
-- At least one saved map configured in robot
+- At least one saved map configured
 - Optional: Schedule helpers for time-based automation
-- Optional: Mobile app for notifications (iOS or Android)
+- Optional: Mobile app for notifications
 
-## 💾 Installation
+
+## Installation
 
 [![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://github.com/errormastern/dreame-multifloor-control/raw/main/vacuum_control.yaml)
 
-Or manually: **Settings** → **Automations & Scenes** → **Blueprints** → **Import Blueprint** → Paste URL above
+Or manually: **Settings** → **Automations & Scenes** → **Blueprints** → **Import Blueprint**
 
-## 🚀 Quick Start
+
+## Quick Start
 
 1. Create automation from blueprint
-2. Select your vacuum entity (e.g., `vacuum.xiaomi_x10`)
-3. Configure triggers for functions you need (see workflows below)
+2. Select your vacuum entity
+3. Configure triggers for the functions you need
 4. Save and test
 
-Related entities (status, mode, map, camera) are auto-detected from the vacuum entity.
+Related entities (status, mode, map, camera) are auto-detected.
 
-## 🔄 Workflows
 
-This blueprint provides two main workflows for controlling your vacuum across multiple floors.
+## Workflows
 
-### 📅 Scheduled Cleaning Workflow
+<details>
+<summary><b>Workflow Overview</b></summary>
 
-**Purpose:** Time-based cleaning with automatic preparation and transport notifications.
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        TRIGGER                                  │
+│              (Schedule / Button / Event)                        │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   BASE STATION MAP?                             │
+└─────────────┬───────────────────────────────┬───────────────────┘
+              │ Yes                           │ No
+              ▼                               ▼
+┌─────────────────────────┐     ┌─────────────────────────────────┐
+│   Start immediately     │     │   PREPARATION WORKFLOW          │
+│   No intervention       │     │                                 │
+│   needed                │     │   1. Notify → "Prepare Robot"   │
+└─────────────────────────┘     │   2. Wash mop (if sweep+mop)    │
+                                │   3. Start → Pause for pickup   │
+                                │   4. Notify → "Start Cleaning"  │
+                                │   5. Transport & Resume         │
+                                └─────────────────────────────────┘
+```
 
-**Setup:**
-1. Create Schedule helpers in Home Assistant (Settings → Devices & Services → Helpers → Schedule)
-2. Configure Map 1/2/3 schedules in blueprint (assign schedule entities)
-3. Set up notification service for maps without base station
+</details>
 
-**Behavior depends on map type:**
 
-**Maps WITH base station:**
-- Schedule triggers → Robot starts cleaning immediately
-- No manual intervention needed
+### Preparation Workflow
 
-**Maps WITHOUT base station:**
-1. Schedule triggers → Notification with "Prepare Robot" and "Skip" buttons
-2. Press "Prepare Robot" → Robot washes mop (if sweep+mop), starts cleaning, pauses automatically
-3. Pickup notification → Transport robot to target floor
-4. Press "Start Cleaning" button → Robot resumes cleaning
+For maps without a base station, the robot prepares at the dock and pauses for transport.
 
-**Conflict Detection:**
-- Only one schedule runs at a time
-- New schedules abort silently if robot is already cleaning
+**Sweep + Mop mode:**
+1. Robot washes mop at base station
+2. Robot starts and undocks
+3. After a short delay, robot pauses automatically
+4. Transport robot to target floor
+5. Press button or notification action to resume
 
-### 🎛️ Manual Control Workflow
+**Sweep only mode:**
+Steps 1 is skipped – robot starts directly and pauses for pickup.
 
-**Purpose:** Direct control via buttons, switches, or other triggers.
+> [!NOTE]
+> The delay before pausing allows the robot to move away from charging contacts for easier pickup. See [Timeouts](#timeouts) for configuration.
 
-**Available Functions:**
 
-| Function | Description | Use Case |
-|----------|-------------|----------|
-| **Sweep Only Mode** | Set cleaning mode to sweep-only | Quick cleaning without mopping |
-| **Sweep + Mop Mode** | Set cleaning mode with mop | Full cleaning with water |
-| **Smart Start/Pause/Resume** | Context-aware control | Main cleaning button |
-| **Map 1 / Map 2 / Map 3** | Switch between floor maps | Multi-floor control |
+### Scheduled Cleaning
 
-**Smart Start/Pause/Resume Logic:**
+The core workflow for time-based cleaning across floors.
 
-The function automatically adapts to robot status:
+**Base station maps:** Schedule triggers → Robot cleans immediately.
+
+**Other maps:**
+1. Schedule triggers → Notification with "Prepare Robot" / "Skip"
+2. Confirm → Robot prepares and pauses (see [Preparation Workflow](#preparation-workflow))
+3. Pickup notification → Transport robot
+4. Press "Start Cleaning" → Robot resumes
+
+**Conflict handling:** Only one schedule runs at a time. New schedules abort silently if robot is busy.
+
+Schedule helpers let you define when cleaning should start. Create them via **Settings** → **Helpers** → **Schedule**. See [Schedule helper documentation](https://www.home-assistant.io/integrations/schedule/).
+
+
+### 🔘 Manual Control
+
+Direct control via buttons, switches, or other triggers.
+
+| Function | Description |
+|----------|-------------|
+| **Sweep Only Mode** | Sets cleaning mode to sweep-only for quick cleaning without mopping. |
+| **Sweep + Mop Mode** | Sets cleaning mode with mop enabled for full cleaning. |
+| **Smart Start/Pause/Resume** | Context-aware control – adapts to robot status. See details below. |
+| **Map 1 / Map 2 / Map 3** | Switches between floor maps for multi-floor setups. |
+
+
+#### Smart Start/Pause/Resume
+
+Adapts automatically based on robot status:
 
 | Robot Status | Current Map | Action |
 |--------------|-------------|--------|
-| **Cleaning** | Any | Pause immediately |
-| **Paused** | Any | Resume cleaning |
-| **Idle (docked)** | Base station map | Start cleaning on current map |
-| **Idle (docked)** | Other map | Run preparation workflow → pause for transport |
+| Cleaning | Any | Pause immediately |
+| Paused | Any | Resume cleaning |
+| Idle (docked) | Base station map | Start cleaning |
+| Idle (docked) | Other map | Run [Preparation Workflow](#preparation-workflow) |
 
-**Preparation Workflow (Non-Base Station Maps):**
 
-For sweep+mop mode on maps without base station:
+### Trigger Setup
 
-1. Robot washes mop at base station (~3-4 minutes)
-2. Robot starts cleaning and undocks
-3. After short delay (~4.5s), robot pauses automatically
-4. User transports robot to target floor
-5. Press button again to resume cleaning
+Use any Home Assistant trigger type. MQTT and device triggers auto-detect action values from the payload.
 
-> **Why the delay?** Allows robot to move away from charging contacts for easier pickup.
+> [!WARNING]
+> For state or event triggers, you must set a **Trigger ID** manually (e.g., `fn_start`, `fn_sweep_mode`). Without an ID, the automation cannot determine which function to execute.
 
-**Trigger Setup:**
 
-Use any Home Assistant trigger type:
-- **MQTT triggers**: Action values auto-detected from payload
-- **Device triggers**: Action values auto-detected
-- **State/Event triggers**: Set Trigger ID manually (e.g., `fn_start`)
+## Timeouts
 
-## 🌐 Localization
+The blueprint uses timeouts to handle robot state transitions reliably.
 
-The blueprint supports multilingual notifications. Customize display texts in the Localization section:
-- Sweep/Mop mode labels
+| Timeout | Default | Purpose |
+|---------|---------|---------|
+| **Start Timeout** | 120s | Max wait for robot to begin cleaning after start command |
+| **Moistening Timeout** | 60s | Max wait for mop washing to complete (sweep+mop mode) |
+| **Pause Delay** | 4.5s | Delay before pausing after undock – allows robot to clear charging contacts |
+
+Adjust these in the blueprint configuration if your robot behaves differently.
+
+
+## Localisation
+
+Customise notification texts in the Localisation section:
+- Mode labels (Sweep/Mop)
 - Button labels (Prepare, Skip, Start, Cancel)
-- Used in notifications and action buttons
 
-Internal logic remains English - only user-facing texts are localized.
+Internal logic remains in English.
 
-## 📚 Configuration Details
-
-Detailed configuration documentation (all blueprint sections, settings, and examples) will be provided in a separate configuration guide.
 
 ## Technical Notes
 
-**Automation Mode:** `queued` (max: 10) - Required for button devices sending press + release events.
+**Automation mode:** `queued` (max: 10) – required for button devices sending press + release events.
 
-**Tested with:** Xiaomi X10+ (Dreame L10s Ultra models should also work, as well as from Dreame Integration supported models)
+**Tested with:** Xiaomi X10+ (Dreame L10s Ultra and other supported models should work).
 
-**Feedback:** Report issues or request features via [GitHub Issues](https://github.com/errormastern/dreame-multifloor-control/issues)
 
 ## Links
 
-- [Dreame Vacuum Integration](https://github.com/Tasshack/dreame-vacuum) - Required custom integration
-- [Repository](https://github.com/errormastern/dreame-multifloor-control) - Source code and releases
-- [Issues](https://github.com/errormastern/dreame-multifloor-control/issues) - Bug reports and feature requests
+- [Dreame Vacuum Integration](https://github.com/Tasshack/dreame-vacuum) – Required integration
+- [Repository](https://github.com/errormastern/dreame-multifloor-control) – Source and releases
+- [Issues](https://github.com/errormastern/dreame-multifloor-control/issues) – Bug reports and feature requests
 
 ---
 
-**License**: MIT
+**Licence:** MIT
