@@ -3,7 +3,7 @@ blueprint:
   description: |
     **🤖 Dreame Vacuum Multi-Button Control**
     *Version: 0.8.4*
-    
+
     Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.
     Intelligent washing detection and configurable delay for easy robot pickup.
     Optional: Uses room-specific settings from Dreame app (cleaning order, suction, water, repeats per room).
@@ -47,7 +47,7 @@ blueprint:
         vacuum_entity:
           name: "Vacuum Entity"
           description: |
-            Select your vacuum entity (e.g., `vacuum.dreame_x10`).
+            Select your vacuum entity (e.g., `vacuum.xiaomi_x10`).
             All other entities are auto-detected from this selection.
           selector:
             entity:
