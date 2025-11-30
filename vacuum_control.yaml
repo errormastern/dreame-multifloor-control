@@ -1,10 +1,9 @@
 blueprint:
   name: "🤖 Dreame Vacuum Multi-Button Control"
   description: |
-    *🤖 Dreame Vacuum Multi-Button Control*
-    **Version: 0.8.4**
-
-    **Main Features:**
+    **🤖 Dreame Vacuum Multi-Button Control**
+    *Version: 0.8.4*
+    
     Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.
     Intelligent washing detection and configurable delay for easy robot pickup.
     Optional: Uses room-specific settings from Dreame app (cleaning order, suction, water, repeats per room).
@@ -16,6 +15,7 @@ blueprint:
     ⏭️ Manual control via MQTT, device triggers, state changes, or events
     🗺️ Segment-based Map cleaning with configurable repeats
 
+    **Chanelog:**
     **v0.8.3 Changes:** Fixed device_trackers type check using HA-documented 'is string_like' test
     **v0.8.2 Changes:** Multi-recipient notifications - select multiple persons (presence-checked) and/or notification groups
     **v0.8.1 Changes:** Improved robustness - entity availability checks and error handling prevent automation aborts when entities are unavailable
