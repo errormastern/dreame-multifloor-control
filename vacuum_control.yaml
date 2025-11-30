@@ -1,16 +1,15 @@
 blueprint:
   name: "🤖 Dreame Vacuum Multi-Button Control"
   description: |
-    **Version: 0.8.1**
+    **Version: 0.8.2**
 
     Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.
     Intelligent washing detection and configurable delay for easy robot pickup.
     Optional: Uses room-specific settings from Dreame app (cleaning order, suction, water, repeats per room).
 
+    **v0.8.2 Changes:** Multi-recipient notifications - select multiple persons (presence-checked) and/or notification groups
     **v0.8.1 Changes:** Improved robustness - entity availability checks and error handling prevent automation aborts when entities are unavailable
     **v0.8.0 Changes:** Added customized cleaning support - uses room settings from Dreame app when available (cleaning sequence, per-room suction/water/repeats)
-    **v0.7.2 Changes:** Added dock validation - schedules and prepare actions verify robot is docked before starting
-    **v0.7.1 Changes:** Fixed customized_cleaning handling - mode changes now automatically disable customized cleaning when active
 
     **Main Features:**
     🤖 Auto-detection of vacuum entities (select vacuum, rest auto-detected)
@@ -348,16 +347,30 @@ blueprint:
             boolean:
           default: false
 
-        scheduled_notification_service:
-          name: "Notification Service"
+        scheduled_notification_persons:
+          name: "👤 Persons to Notify"
           description: |
-            Service for sending notifications.
-            Examples: `notify.notify`, `notify.mobile_app_iphone`
+            Select persons to notify. Only persons at home receive notifications.
+            Notification service is auto-detected from person's device tracker.
 
-            Check Developer Tools → Services for available services.
+            **Validation:** Person must be home + have valid device tracker
+          selector:
+            entity:
+              domain: person
+              multiple: true
+          default: []
+
+        scheduled_notification_groups:
+          name: "👥 Notification Groups"
+          description: |
+            Notification groups to notify (no presence check).
+            Enter group names without 'notify.' prefix.
+
+            Example: `family_phones` → calls `notify.family_phones`
           selector:
             text:
-          default: "notify.notify"
+              multiple: true
+          default: []
 
         scheduled_notification_title:
           name: "Title"
@@ -482,16 +495,30 @@ blueprint:
             boolean:
           default: false
 
-        pickup_notification_service:
-          name: "Notification Service"
+        pickup_notification_persons:
+          name: "👤 Persons to Notify"
           description: |
-            Service for sending notifications.
-            Examples: `notify.notify`, `notify.mobile_app_iphone`
+            Select persons to notify. Only persons at home receive notifications.
+            Notification service is auto-detected from person's device tracker.
 
-            Check Developer Tools → Services for available services.
+            **Validation:** Person must be home + have valid device tracker
+          selector:
+            entity:
+              domain: person
+              multiple: true
+          default: []
+
+        pickup_notification_groups:
+          name: "👥 Notification Groups"
+          description: |
+            Notification groups to notify (no presence check).
+            Enter group names without 'notify.' prefix.
+
+            Example: `family_phones` → calls `notify.family_phones`
           selector:
             text:
-          default: "notify.notify"
+              multiple: true
+          default: []
 
         pickup_notification_title:
           name: "Title"
@@ -1236,12 +1263,16 @@ variables:
 
   # Notification input imports
   scheduled_notification_enabled: !input scheduled_notification_enabled
+  scheduled_notification_persons: !input scheduled_notification_persons
+  scheduled_notification_groups: !input scheduled_notification_groups
   scheduled_notification_interruption_level: !input scheduled_notification_interruption_level
   scheduled_notification_sound: !input scheduled_notification_sound
   scheduled_notification_critical: !input scheduled_notification_critical
   scheduled_notification_volume: !input scheduled_notification_volume
 
   pickup_notification_enabled: !input pickup_notification_enabled
+  pickup_notification_persons: !input pickup_notification_persons
+  pickup_notification_groups: !input pickup_notification_groups
   pickup_notification_interruption_level: !input pickup_notification_interruption_level
   pickup_notification_sound: !input pickup_notification_sound
   pickup_notification_critical: !input pickup_notification_critical
@@ -2127,31 +2158,53 @@ actions:
                         {% if target_mode == mode_sweeping %}{{ sweep_display }}
                         {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display }}
                         {% else %}{{ target_mode }}{% endif %}
-                  # Send actionable notification with buttons
-                  - action: !input scheduled_notification_service
-                    continue_on_error: true  # Don't abort if notification device unavailable
-                    data:
-                      title: !input scheduled_notification_title
-                      message: !input scheduled_notification_message
-                      data:
-                        actions:
-                          - action: "PREPARE_MAP1_SWEEP"
-                            title: "{{ prepare_button }}"
-                          - action: "SKIP_CLEANING"
-                            title: "{{ skip_button }}"
-                        # iOS Push Settings for Lock Screen
-                        push:
-                          interruption-level: "{{ scheduled_notification_interruption_level }}"
-                          sound: >
-                            {% if scheduled_notification_critical %}
-                              {
-                                "name": "{{ scheduled_notification_sound }}",
-                                "critical": 1,
-                                "volume": {{ scheduled_notification_volume }}
-                              }
-                            {% else %}
-                              "{{ scheduled_notification_sound }}"
+                      # Collect valid notification recipients
+                      scheduled_notify_services: >
+                        {% set result = [] %}
+                        {% for person in scheduled_notification_persons %}
+                          {% if is_state(person, 'home') %}
+                            {% set tracker = state_attr(person, 'device_trackers') %}
+                            {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
+                              {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                              {% if tracker_name | length > 0 %}
+                                {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                              {% endif %}
                             {% endif %}
+                          {% endif %}
+                        {% endfor %}
+                        {% for group in scheduled_notification_groups %}
+                          {% if group and group not in ['', 'unknown', 'unavailable', none] %}
+                            {% set result = result + ['notify.' + group] %}
+                          {% endif %}
+                        {% endfor %}
+                        {{ result }}
+                  # Send to all valid recipients
+                  - repeat:
+                      for_each: "{{ scheduled_notify_services }}"
+                      sequence:
+                        - action: "{{ repeat.item }}"
+                          continue_on_error: true
+                          data:
+                            title: !input scheduled_notification_title
+                            message: !input scheduled_notification_message
+                            data:
+                              actions:
+                                - action: "PREPARE_MAP1_SWEEP"
+                                  title: "{{ prepare_button }}"
+                                - action: "SKIP_CLEANING"
+                                  title: "{{ skip_button }}"
+                              push:
+                                interruption-level: "{{ scheduled_notification_interruption_level }}"
+                                sound: >
+                                  {% if scheduled_notification_critical %}
+                                    {
+                                      "name": "{{ scheduled_notification_sound }}",
+                                      "critical": 1,
+                                      "volume": {{ scheduled_notification_volume }}
+                                    }
+                                  {% else %}
+                                    "{{ scheduled_notification_sound }}"
+                                  {% endif %}
 
                   - if: "{{ debug_mode }}"
                     then:
@@ -2290,31 +2343,53 @@ actions:
                         {% if target_mode == mode_sweeping %}{{ sweep_display }}
                         {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display }}
                         {% else %}{{ target_mode }}{% endif %}
-                  # Send actionable notification with buttons
-                  - action: !input scheduled_notification_service
-                    continue_on_error: true  # Don't abort if notification device unavailable
-                    data:
-                      title: !input scheduled_notification_title
-                      message: !input scheduled_notification_message
-                      data:
-                        actions:
-                          - action: "PREPARE_MAP1_MOP"
-                            title: "{{ prepare_button }}"
-                          - action: "SKIP_CLEANING"
-                            title: "{{ skip_button }}"
-                        # iOS Push Settings for Lock Screen
-                        push:
-                          interruption-level: "{{ scheduled_notification_interruption_level }}"
-                          sound: >
-                            {% if scheduled_notification_critical %}
-                              {
-                                "name": "{{ scheduled_notification_sound }}",
-                                "critical": 1,
-                                "volume": {{ scheduled_notification_volume }}
-                              }
-                            {% else %}
-                              "{{ scheduled_notification_sound }}"
+                      # Collect valid notification recipients
+                      scheduled_notify_services: >
+                        {% set result = [] %}
+                        {% for person in scheduled_notification_persons %}
+                          {% if is_state(person, 'home') %}
+                            {% set tracker = state_attr(person, 'device_trackers') %}
+                            {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
+                              {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                              {% if tracker_name | length > 0 %}
+                                {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                              {% endif %}
                             {% endif %}
+                          {% endif %}
+                        {% endfor %}
+                        {% for group in scheduled_notification_groups %}
+                          {% if group and group not in ['', 'unknown', 'unavailable', none] %}
+                            {% set result = result + ['notify.' + group] %}
+                          {% endif %}
+                        {% endfor %}
+                        {{ result }}
+                  # Send to all valid recipients
+                  - repeat:
+                      for_each: "{{ scheduled_notify_services }}"
+                      sequence:
+                        - action: "{{ repeat.item }}"
+                          continue_on_error: true
+                          data:
+                            title: !input scheduled_notification_title
+                            message: !input scheduled_notification_message
+                            data:
+                              actions:
+                                - action: "PREPARE_MAP1_MOP"
+                                  title: "{{ prepare_button }}"
+                                - action: "SKIP_CLEANING"
+                                  title: "{{ skip_button }}"
+                              push:
+                                interruption-level: "{{ scheduled_notification_interruption_level }}"
+                                sound: >
+                                  {% if scheduled_notification_critical %}
+                                    {
+                                      "name": "{{ scheduled_notification_sound }}",
+                                      "critical": 1,
+                                      "volume": {{ scheduled_notification_volume }}
+                                    }
+                                  {% else %}
+                                    "{{ scheduled_notification_sound }}"
+                                  {% endif %}
 
                   - if: "{{ debug_mode }}"
                     then:
@@ -2453,31 +2528,53 @@ actions:
                         {% if target_mode == mode_sweeping %}{{ sweep_display }}
                         {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display }}
                         {% else %}{{ target_mode }}{% endif %}
-                  # Send actionable notification with buttons
-                  - action: !input scheduled_notification_service
-                    continue_on_error: true  # Don't abort if notification device unavailable
-                    data:
-                      title: !input scheduled_notification_title
-                      message: !input scheduled_notification_message
-                      data:
-                        actions:
-                          - action: "PREPARE_MAP2_SWEEP"
-                            title: "{{ prepare_button }}"
-                          - action: "SKIP_CLEANING"
-                            title: "{{ skip_button }}"
-                        # iOS Push Settings for Lock Screen
-                        push:
-                          interruption-level: "{{ scheduled_notification_interruption_level }}"
-                          sound: >
-                            {% if scheduled_notification_critical %}
-                              {
-                                "name": "{{ scheduled_notification_sound }}",
-                                "critical": 1,
-                                "volume": {{ scheduled_notification_volume }}
-                              }
-                            {% else %}
-                              "{{ scheduled_notification_sound }}"
+                      # Collect valid notification recipients
+                      scheduled_notify_services: >
+                        {% set result = [] %}
+                        {% for person in scheduled_notification_persons %}
+                          {% if is_state(person, 'home') %}
+                            {% set tracker = state_attr(person, 'device_trackers') %}
+                            {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
+                              {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                              {% if tracker_name | length > 0 %}
+                                {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                              {% endif %}
                             {% endif %}
+                          {% endif %}
+                        {% endfor %}
+                        {% for group in scheduled_notification_groups %}
+                          {% if group and group not in ['', 'unknown', 'unavailable', none] %}
+                            {% set result = result + ['notify.' + group] %}
+                          {% endif %}
+                        {% endfor %}
+                        {{ result }}
+                  # Send to all valid recipients
+                  - repeat:
+                      for_each: "{{ scheduled_notify_services }}"
+                      sequence:
+                        - action: "{{ repeat.item }}"
+                          continue_on_error: true
+                          data:
+                            title: !input scheduled_notification_title
+                            message: !input scheduled_notification_message
+                            data:
+                              actions:
+                                - action: "PREPARE_MAP2_SWEEP"
+                                  title: "{{ prepare_button }}"
+                                - action: "SKIP_CLEANING"
+                                  title: "{{ skip_button }}"
+                              push:
+                                interruption-level: "{{ scheduled_notification_interruption_level }}"
+                                sound: >
+                                  {% if scheduled_notification_critical %}
+                                    {
+                                      "name": "{{ scheduled_notification_sound }}",
+                                      "critical": 1,
+                                      "volume": {{ scheduled_notification_volume }}
+                                    }
+                                  {% else %}
+                                    "{{ scheduled_notification_sound }}"
+                                  {% endif %}
 
                   - if: "{{ debug_mode }}"
                     then:
@@ -2616,31 +2713,53 @@ actions:
                         {% if target_mode == mode_sweeping %}{{ sweep_display }}
                         {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display }}
                         {% else %}{{ target_mode }}{% endif %}
-                  # Send actionable notification with buttons
-                  - action: !input scheduled_notification_service
-                    continue_on_error: true  # Don't abort if notification device unavailable
-                    data:
-                      title: !input scheduled_notification_title
-                      message: !input scheduled_notification_message
-                      data:
-                        actions:
-                          - action: "PREPARE_MAP2_MOP"
-                            title: "{{ prepare_button }}"
-                          - action: "SKIP_CLEANING"
-                            title: "{{ skip_button }}"
-                        # iOS Push Settings for Lock Screen
-                        push:
-                          interruption-level: "{{ scheduled_notification_interruption_level }}"
-                          sound: >
-                            {% if scheduled_notification_critical %}
-                              {
-                                "name": "{{ scheduled_notification_sound }}",
-                                "critical": 1,
-                                "volume": {{ scheduled_notification_volume }}
-                              }
-                            {% else %}
-                              "{{ scheduled_notification_sound }}"
+                      # Collect valid notification recipients
+                      scheduled_notify_services: >
+                        {% set result = [] %}
+                        {% for person in scheduled_notification_persons %}
+                          {% if is_state(person, 'home') %}
+                            {% set tracker = state_attr(person, 'device_trackers') %}
+                            {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
+                              {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                              {% if tracker_name | length > 0 %}
+                                {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                              {% endif %}
                             {% endif %}
+                          {% endif %}
+                        {% endfor %}
+                        {% for group in scheduled_notification_groups %}
+                          {% if group and group not in ['', 'unknown', 'unavailable', none] %}
+                            {% set result = result + ['notify.' + group] %}
+                          {% endif %}
+                        {% endfor %}
+                        {{ result }}
+                  # Send to all valid recipients
+                  - repeat:
+                      for_each: "{{ scheduled_notify_services }}"
+                      sequence:
+                        - action: "{{ repeat.item }}"
+                          continue_on_error: true
+                          data:
+                            title: !input scheduled_notification_title
+                            message: !input scheduled_notification_message
+                            data:
+                              actions:
+                                - action: "PREPARE_MAP2_MOP"
+                                  title: "{{ prepare_button }}"
+                                - action: "SKIP_CLEANING"
+                                  title: "{{ skip_button }}"
+                              push:
+                                interruption-level: "{{ scheduled_notification_interruption_level }}"
+                                sound: >
+                                  {% if scheduled_notification_critical %}
+                                    {
+                                      "name": "{{ scheduled_notification_sound }}",
+                                      "critical": 1,
+                                      "volume": {{ scheduled_notification_volume }}
+                                    }
+                                  {% else %}
+                                    "{{ scheduled_notification_sound }}"
+                                  {% endif %}
 
                   - if: "{{ debug_mode }}"
                     then:
@@ -2779,31 +2898,53 @@ actions:
                         {% if target_mode == mode_sweeping %}{{ sweep_display }}
                         {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display }}
                         {% else %}{{ target_mode }}{% endif %}
-                  # Send actionable notification with buttons
-                  - action: !input scheduled_notification_service
-                    continue_on_error: true  # Don't abort if notification device unavailable
-                    data:
-                      title: !input scheduled_notification_title
-                      message: !input scheduled_notification_message
-                      data:
-                        actions:
-                          - action: "PREPARE_MAP3_SWEEP"
-                            title: "{{ prepare_button }}"
-                          - action: "SKIP_CLEANING"
-                            title: "{{ skip_button }}"
-                        # iOS Push Settings for Lock Screen
-                        push:
-                          interruption-level: "{{ scheduled_notification_interruption_level }}"
-                          sound: >
-                            {% if scheduled_notification_critical %}
-                              {
-                                "name": "{{ scheduled_notification_sound }}",
-                                "critical": 1,
-                                "volume": {{ scheduled_notification_volume }}
-                              }
-                            {% else %}
-                              "{{ scheduled_notification_sound }}"
+                      # Collect valid notification recipients
+                      scheduled_notify_services: >
+                        {% set result = [] %}
+                        {% for person in scheduled_notification_persons %}
+                          {% if is_state(person, 'home') %}
+                            {% set tracker = state_attr(person, 'device_trackers') %}
+                            {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
+                              {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                              {% if tracker_name | length > 0 %}
+                                {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                              {% endif %}
                             {% endif %}
+                          {% endif %}
+                        {% endfor %}
+                        {% for group in scheduled_notification_groups %}
+                          {% if group and group not in ['', 'unknown', 'unavailable', none] %}
+                            {% set result = result + ['notify.' + group] %}
+                          {% endif %}
+                        {% endfor %}
+                        {{ result }}
+                  # Send to all valid recipients
+                  - repeat:
+                      for_each: "{{ scheduled_notify_services }}"
+                      sequence:
+                        - action: "{{ repeat.item }}"
+                          continue_on_error: true
+                          data:
+                            title: !input scheduled_notification_title
+                            message: !input scheduled_notification_message
+                            data:
+                              actions:
+                                - action: "PREPARE_MAP3_SWEEP"
+                                  title: "{{ prepare_button }}"
+                                - action: "SKIP_CLEANING"
+                                  title: "{{ skip_button }}"
+                              push:
+                                interruption-level: "{{ scheduled_notification_interruption_level }}"
+                                sound: >
+                                  {% if scheduled_notification_critical %}
+                                    {
+                                      "name": "{{ scheduled_notification_sound }}",
+                                      "critical": 1,
+                                      "volume": {{ scheduled_notification_volume }}
+                                    }
+                                  {% else %}
+                                    "{{ scheduled_notification_sound }}"
+                                  {% endif %}
 
                   - if: "{{ debug_mode }}"
                     then:
@@ -2943,32 +3084,53 @@ actions:
                         {% if target_mode == mode_sweeping %}{{ sweep_display }}
                         {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display }}
                         {% else %}{{ target_mode }}{% endif %}
-                  # Send actionable notification with buttons
-                  - action: !input scheduled_notification_service
-                    continue_on_error: true  # Don't abort if notification device unavailable
-                    data:
-                      title: !input scheduled_notification_title
-                      message: !input scheduled_notification_message
-                      data:
-                        # Action buttons
-                        actions:
-                          - action: "PREPARE_MAP3_MOP"
-                            title: "{{ prepare_button }}"
-                          - action: "SKIP_CLEANING"
-                            title: "{{ skip_button }}"
-                        # iOS Push Settings for Lock Screen
-                        push:
-                          interruption-level: "{{ scheduled_notification_interruption_level }}"
-                          sound: >
-                            {% if scheduled_notification_critical %}
-                              {
-                                "name": "{{ scheduled_notification_sound }}",
-                                "critical": 1,
-                                "volume": {{ scheduled_notification_volume }}
-                              }
-                            {% else %}
-                              "{{ scheduled_notification_sound }}"
+                      # Collect valid notification recipients
+                      scheduled_notify_services: >
+                        {% set result = [] %}
+                        {% for person in scheduled_notification_persons %}
+                          {% if is_state(person, 'home') %}
+                            {% set tracker = state_attr(person, 'device_trackers') %}
+                            {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
+                              {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                              {% if tracker_name | length > 0 %}
+                                {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                              {% endif %}
                             {% endif %}
+                          {% endif %}
+                        {% endfor %}
+                        {% for group in scheduled_notification_groups %}
+                          {% if group and group not in ['', 'unknown', 'unavailable', none] %}
+                            {% set result = result + ['notify.' + group] %}
+                          {% endif %}
+                        {% endfor %}
+                        {{ result }}
+                  # Send to all valid recipients
+                  - repeat:
+                      for_each: "{{ scheduled_notify_services }}"
+                      sequence:
+                        - action: "{{ repeat.item }}"
+                          continue_on_error: true
+                          data:
+                            title: !input scheduled_notification_title
+                            message: !input scheduled_notification_message
+                            data:
+                              actions:
+                                - action: "PREPARE_MAP3_MOP"
+                                  title: "{{ prepare_button }}"
+                                - action: "SKIP_CLEANING"
+                                  title: "{{ skip_button }}"
+                              push:
+                                interruption-level: "{{ scheduled_notification_interruption_level }}"
+                                sound: >
+                                  {% if scheduled_notification_critical %}
+                                    {
+                                      "name": "{{ scheduled_notification_sound }}",
+                                      "critical": 1,
+                                      "volume": {{ scheduled_notification_volume }}
+                                    }
+                                  {% else %}
+                                    "{{ scheduled_notification_sound }}"
+                                  {% endif %}
 
                   - if: "{{ debug_mode }}"
                     then:
@@ -3173,30 +3335,53 @@ actions:
               - variables:
                   map_name: "{{ notification_target_map_name }}"
                   current_map: "{{ states(selected_map_select) }}"
-              - action: !input pickup_notification_service
-                continue_on_error: true  # Don't abort if notification device unavailable
-                data:
-                  title: !input pickup_notification_title
-                  message: !input pickup_notification_message
-                  data:
-                    actions:
-                      - action: "START_CLEANING"
-                        title: "{{ start_cleaning_button }}"
-                      - action: "CANCEL_CLEANING"
-                        title: "{{ cancel_cleaning_button }}"
-                    # iOS Push Settings
-                    push:
-                      interruption-level: "{{ pickup_notification_interruption_level }}"
-                      sound: >
-                        {% if pickup_notification_critical %}
-                          {
-                            "name": "{{ pickup_notification_sound }}",
-                            "critical": 1,
-                            "volume": {{ pickup_notification_volume }}
-                          }
-                        {% else %}
-                          "{{ pickup_notification_sound }}"
+                  # Collect valid notification recipients
+                  pickup_notify_services: >
+                    {% set result = [] %}
+                    {% for person in pickup_notification_persons %}
+                      {% if is_state(person, 'home') %}
+                        {% set tracker = state_attr(person, 'device_trackers') %}
+                        {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
+                          {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                          {% if tracker_name | length > 0 %}
+                            {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                          {% endif %}
                         {% endif %}
+                      {% endif %}
+                    {% endfor %}
+                    {% for group in pickup_notification_groups %}
+                      {% if group and group not in ['', 'unknown', 'unavailable', none] %}
+                        {% set result = result + ['notify.' + group] %}
+                      {% endif %}
+                    {% endfor %}
+                    {{ result }}
+              # Send to all valid recipients
+              - repeat:
+                  for_each: "{{ pickup_notify_services }}"
+                  sequence:
+                    - action: "{{ repeat.item }}"
+                      continue_on_error: true
+                      data:
+                        title: !input pickup_notification_title
+                        message: !input pickup_notification_message
+                        data:
+                          actions:
+                            - action: "START_CLEANING"
+                              title: "{{ start_cleaning_button }}"
+                            - action: "CANCEL_CLEANING"
+                              title: "{{ cancel_cleaning_button }}"
+                          push:
+                            interruption-level: "{{ pickup_notification_interruption_level }}"
+                            sound: >
+                              {% if pickup_notification_critical %}
+                                {
+                                  "name": "{{ pickup_notification_sound }}",
+                                  "critical": 1,
+                                  "volume": {{ pickup_notification_volume }}
+                                }
+                              {% else %}
+                                "{{ pickup_notification_sound }}"
+                              {% endif %}
 
           # Debug: Completion notification
           - if: "{{ debug_mode }}"
@@ -3425,29 +3610,53 @@ actions:
               - variables:
                   map_name: "{{ notification_target_map_name }}"
                   current_map: "{{ states(selected_map_select) }}"
-              - action: !input pickup_notification_service
-                continue_on_error: true  # Don't abort if notification device unavailable
-                data:
-                  title: !input pickup_notification_title
-                  message: !input pickup_notification_message
-                  data:
-                    actions:
-                      - action: "START_CLEANING"
-                        title: "{{ start_cleaning_button }}"
-                      - action: "CANCEL_CLEANING"
-                        title: "{{ cancel_cleaning_button }}"
-                    push:
-                      interruption-level: "{{ pickup_notification_interruption_level }}"
-                      sound: >
-                        {% if pickup_notification_critical %}
-                          {
-                            "name": "{{ pickup_notification_sound }}",
-                            "critical": 1,
-                            "volume": {{ pickup_notification_volume }}
-                          }
-                        {% else %}
-                          "{{ pickup_notification_sound }}"
+                  # Collect valid notification recipients
+                  pickup_notify_services: >
+                    {% set result = [] %}
+                    {% for person in pickup_notification_persons %}
+                      {% if is_state(person, 'home') %}
+                        {% set tracker = state_attr(person, 'device_trackers') %}
+                        {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
+                          {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                          {% if tracker_name | length > 0 %}
+                            {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                          {% endif %}
                         {% endif %}
+                      {% endif %}
+                    {% endfor %}
+                    {% for group in pickup_notification_groups %}
+                      {% if group and group not in ['', 'unknown', 'unavailable', none] %}
+                        {% set result = result + ['notify.' + group] %}
+                      {% endif %}
+                    {% endfor %}
+                    {{ result }}
+              # Send to all valid recipients
+              - repeat:
+                  for_each: "{{ pickup_notify_services }}"
+                  sequence:
+                    - action: "{{ repeat.item }}"
+                      continue_on_error: true
+                      data:
+                        title: !input pickup_notification_title
+                        message: !input pickup_notification_message
+                        data:
+                          actions:
+                            - action: "START_CLEANING"
+                              title: "{{ start_cleaning_button }}"
+                            - action: "CANCEL_CLEANING"
+                              title: "{{ cancel_cleaning_button }}"
+                          push:
+                            interruption-level: "{{ pickup_notification_interruption_level }}"
+                            sound: >
+                              {% if pickup_notification_critical %}
+                                {
+                                  "name": "{{ pickup_notification_sound }}",
+                                  "critical": 1,
+                                  "volume": {{ pickup_notification_volume }}
+                                }
+                              {% else %}
+                                "{{ pickup_notification_sound }}"
+                              {% endif %}
 
           # Debug: Completion notification
           - if: "{{ debug_mode }}"
@@ -3655,30 +3864,53 @@ actions:
               - variables:
                   map_name: "{{ notification_target_map_name }}"
                   current_map: "{{ states(selected_map_select) }}"
-              - action: !input pickup_notification_service
-                continue_on_error: true  # Don't abort if notification device unavailable
-                data:
-                  title: !input pickup_notification_title
-                  message: !input pickup_notification_message
-                  data:
-                    actions:
-                      - action: "START_CLEANING"
-                        title: "{{ start_cleaning_button }}"
-                      - action: "CANCEL_CLEANING"
-                        title: "{{ cancel_cleaning_button }}"
-                    # iOS Push Settings
-                    push:
-                      interruption-level: "{{ pickup_notification_interruption_level }}"
-                      sound: >
-                        {% if pickup_notification_critical %}
-                          {
-                            "name": "{{ pickup_notification_sound }}",
-                            "critical": 1,
-                            "volume": {{ pickup_notification_volume }}
-                          }
-                        {% else %}
-                          "{{ pickup_notification_sound }}"
+                  # Collect valid notification recipients
+                  pickup_notify_services: >
+                    {% set result = [] %}
+                    {% for person in pickup_notification_persons %}
+                      {% if is_state(person, 'home') %}
+                        {% set tracker = state_attr(person, 'device_trackers') %}
+                        {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
+                          {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                          {% if tracker_name | length > 0 %}
+                            {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                          {% endif %}
                         {% endif %}
+                      {% endif %}
+                    {% endfor %}
+                    {% for group in pickup_notification_groups %}
+                      {% if group and group not in ['', 'unknown', 'unavailable', none] %}
+                        {% set result = result + ['notify.' + group] %}
+                      {% endif %}
+                    {% endfor %}
+                    {{ result }}
+              # Send to all valid recipients
+              - repeat:
+                  for_each: "{{ pickup_notify_services }}"
+                  sequence:
+                    - action: "{{ repeat.item }}"
+                      continue_on_error: true
+                      data:
+                        title: !input pickup_notification_title
+                        message: !input pickup_notification_message
+                        data:
+                          actions:
+                            - action: "START_CLEANING"
+                              title: "{{ start_cleaning_button }}"
+                            - action: "CANCEL_CLEANING"
+                              title: "{{ cancel_cleaning_button }}"
+                          push:
+                            interruption-level: "{{ pickup_notification_interruption_level }}"
+                            sound: >
+                              {% if pickup_notification_critical %}
+                                {
+                                  "name": "{{ pickup_notification_sound }}",
+                                  "critical": 1,
+                                  "volume": {{ pickup_notification_volume }}
+                                }
+                              {% else %}
+                                "{{ pickup_notification_sound }}"
+                              {% endif %}
 
           # Debug: Completion notification
           - if: "{{ debug_mode }}"
@@ -3909,30 +4141,53 @@ actions:
               - variables:
                   map_name: "{{ notification_target_map_name }}"
                   current_map: "{{ states(selected_map_select) }}"
-              - action: !input pickup_notification_service
-                continue_on_error: true  # Don't abort if notification device unavailable
-                data:
-                  title: !input pickup_notification_title
-                  message: !input pickup_notification_message
-                  data:
-                    actions:
-                      - action: "START_CLEANING"
-                        title: "{{ start_cleaning_button }}"
-                      - action: "CANCEL_CLEANING"
-                        title: "{{ cancel_cleaning_button }}"
-                    # iOS Push Settings
-                    push:
-                      interruption-level: "{{ pickup_notification_interruption_level }}"
-                      sound: >
-                        {% if pickup_notification_critical %}
-                          {
-                            "name": "{{ pickup_notification_sound }}",
-                            "critical": 1,
-                            "volume": {{ pickup_notification_volume }}
-                          }
-                        {% else %}
-                          "{{ pickup_notification_sound }}"
+                  # Collect valid notification recipients
+                  pickup_notify_services: >
+                    {% set result = [] %}
+                    {% for person in pickup_notification_persons %}
+                      {% if is_state(person, 'home') %}
+                        {% set tracker = state_attr(person, 'device_trackers') %}
+                        {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
+                          {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                          {% if tracker_name | length > 0 %}
+                            {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                          {% endif %}
                         {% endif %}
+                      {% endif %}
+                    {% endfor %}
+                    {% for group in pickup_notification_groups %}
+                      {% if group and group not in ['', 'unknown', 'unavailable', none] %}
+                        {% set result = result + ['notify.' + group] %}
+                      {% endif %}
+                    {% endfor %}
+                    {{ result }}
+              # Send to all valid recipients
+              - repeat:
+                  for_each: "{{ pickup_notify_services }}"
+                  sequence:
+                    - action: "{{ repeat.item }}"
+                      continue_on_error: true
+                      data:
+                        title: !input pickup_notification_title
+                        message: !input pickup_notification_message
+                        data:
+                          actions:
+                            - action: "START_CLEANING"
+                              title: "{{ start_cleaning_button }}"
+                            - action: "CANCEL_CLEANING"
+                              title: "{{ cancel_cleaning_button }}"
+                          push:
+                            interruption-level: "{{ pickup_notification_interruption_level }}"
+                            sound: >
+                              {% if pickup_notification_critical %}
+                                {
+                                  "name": "{{ pickup_notification_sound }}",
+                                  "critical": 1,
+                                  "volume": {{ pickup_notification_volume }}
+                                }
+                              {% else %}
+                                "{{ pickup_notification_sound }}"
+                              {% endif %}
 
           # Debug: Completion notification
           - if: "{{ debug_mode }}"
@@ -4140,30 +4395,53 @@ actions:
               - variables:
                   map_name: "{{ notification_target_map_name }}"
                   current_map: "{{ states(selected_map_select) }}"
-              - action: !input pickup_notification_service
-                continue_on_error: true  # Don't abort if notification device unavailable
-                data:
-                  title: !input pickup_notification_title
-                  message: !input pickup_notification_message
-                  data:
-                    actions:
-                      - action: "START_CLEANING"
-                        title: "{{ start_cleaning_button }}"
-                      - action: "CANCEL_CLEANING"
-                        title: "{{ cancel_cleaning_button }}"
-                    # iOS Push Settings
-                    push:
-                      interruption-level: "{{ pickup_notification_interruption_level }}"
-                      sound: >
-                        {% if pickup_notification_critical %}
-                          {
-                            "name": "{{ pickup_notification_sound }}",
-                            "critical": 1,
-                            "volume": {{ pickup_notification_volume }}
-                          }
-                        {% else %}
-                          "{{ pickup_notification_sound }}"
+                  # Collect valid notification recipients
+                  pickup_notify_services: >
+                    {% set result = [] %}
+                    {% for person in pickup_notification_persons %}
+                      {% if is_state(person, 'home') %}
+                        {% set tracker = state_attr(person, 'device_trackers') %}
+                        {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
+                          {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                          {% if tracker_name | length > 0 %}
+                            {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                          {% endif %}
                         {% endif %}
+                      {% endif %}
+                    {% endfor %}
+                    {% for group in pickup_notification_groups %}
+                      {% if group and group not in ['', 'unknown', 'unavailable', none] %}
+                        {% set result = result + ['notify.' + group] %}
+                      {% endif %}
+                    {% endfor %}
+                    {{ result }}
+              # Send to all valid recipients
+              - repeat:
+                  for_each: "{{ pickup_notify_services }}"
+                  sequence:
+                    - action: "{{ repeat.item }}"
+                      continue_on_error: true
+                      data:
+                        title: !input pickup_notification_title
+                        message: !input pickup_notification_message
+                        data:
+                          actions:
+                            - action: "START_CLEANING"
+                              title: "{{ start_cleaning_button }}"
+                            - action: "CANCEL_CLEANING"
+                              title: "{{ cancel_cleaning_button }}"
+                          push:
+                            interruption-level: "{{ pickup_notification_interruption_level }}"
+                            sound: >
+                              {% if pickup_notification_critical %}
+                                {
+                                  "name": "{{ pickup_notification_sound }}",
+                                  "critical": 1,
+                                  "volume": {{ pickup_notification_volume }}
+                                }
+                              {% else %}
+                                "{{ pickup_notification_sound }}"
+                              {% endif %}
 
           # Debug: Completion notification
           - if: "{{ debug_mode }}"
@@ -4394,30 +4672,53 @@ actions:
               - variables:
                   map_name: "{{ notification_target_map_name }}"
                   current_map: "{{ states(selected_map_select) }}"
-              - action: !input pickup_notification_service
-                continue_on_error: true  # Don't abort if notification device unavailable
-                data:
-                  title: !input pickup_notification_title
-                  message: !input pickup_notification_message
-                  data:
-                    actions:
-                      - action: "START_CLEANING"
-                        title: "{{ start_cleaning_button }}"
-                      - action: "CANCEL_CLEANING"
-                        title: "{{ cancel_cleaning_button }}"
-                    # iOS Push Settings
-                    push:
-                      interruption-level: "{{ pickup_notification_interruption_level }}"
-                      sound: >
-                        {% if pickup_notification_critical %}
-                          {
-                            "name": "{{ pickup_notification_sound }}",
-                            "critical": 1,
-                            "volume": {{ pickup_notification_volume }}
-                          }
-                        {% else %}
-                          "{{ pickup_notification_sound }}"
+                  # Collect valid notification recipients
+                  pickup_notify_services: >
+                    {% set result = [] %}
+                    {% for person in pickup_notification_persons %}
+                      {% if is_state(person, 'home') %}
+                        {% set tracker = state_attr(person, 'device_trackers') %}
+                        {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
+                          {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                          {% if tracker_name | length > 0 %}
+                            {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                          {% endif %}
                         {% endif %}
+                      {% endif %}
+                    {% endfor %}
+                    {% for group in pickup_notification_groups %}
+                      {% if group and group not in ['', 'unknown', 'unavailable', none] %}
+                        {% set result = result + ['notify.' + group] %}
+                      {% endif %}
+                    {% endfor %}
+                    {{ result }}
+              # Send to all valid recipients
+              - repeat:
+                  for_each: "{{ pickup_notify_services }}"
+                  sequence:
+                    - action: "{{ repeat.item }}"
+                      continue_on_error: true
+                      data:
+                        title: !input pickup_notification_title
+                        message: !input pickup_notification_message
+                        data:
+                          actions:
+                            - action: "START_CLEANING"
+                              title: "{{ start_cleaning_button }}"
+                            - action: "CANCEL_CLEANING"
+                              title: "{{ cancel_cleaning_button }}"
+                          push:
+                            interruption-level: "{{ pickup_notification_interruption_level }}"
+                            sound: >
+                              {% if pickup_notification_critical %}
+                                {
+                                  "name": "{{ pickup_notification_sound }}",
+                                  "critical": 1,
+                                  "volume": {{ pickup_notification_volume }}
+                                }
+                              {% else %}
+                                "{{ pickup_notification_sound }}"
+                              {% endif %}
 
           # Debug: Completion notification
           - if: "{{ debug_mode }}"
