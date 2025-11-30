@@ -2163,9 +2163,9 @@ actions:
                         {% set result = [] %}
                         {% for person in scheduled_notification_persons %}
                           {% if is_state(person, 'home') %}
-                            {% set tracker = state_attr(person, 'device_trackers') %}
-                            {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
-                              {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                            {% set trackers = state_attr(person, 'device_trackers') %}
+                            {% if trackers and trackers | length > 0 %}
+                              {% set tracker_name = (trackers | first) | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
                                 {% set result = result + ['notify.mobile_app_' + tracker_name] %}
                               {% endif %}
@@ -2348,9 +2348,9 @@ actions:
                         {% set result = [] %}
                         {% for person in scheduled_notification_persons %}
                           {% if is_state(person, 'home') %}
-                            {% set tracker = state_attr(person, 'device_trackers') %}
-                            {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
-                              {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                            {% set trackers = state_attr(person, 'device_trackers') %}
+                            {% if trackers and trackers | length > 0 %}
+                              {% set tracker_name = (trackers | first) | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
                                 {% set result = result + ['notify.mobile_app_' + tracker_name] %}
                               {% endif %}
@@ -2533,9 +2533,9 @@ actions:
                         {% set result = [] %}
                         {% for person in scheduled_notification_persons %}
                           {% if is_state(person, 'home') %}
-                            {% set tracker = state_attr(person, 'device_trackers') %}
-                            {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
-                              {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                            {% set trackers = state_attr(person, 'device_trackers') %}
+                            {% if trackers and trackers | length > 0 %}
+                              {% set tracker_name = (trackers | first) | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
                                 {% set result = result + ['notify.mobile_app_' + tracker_name] %}
                               {% endif %}
@@ -2718,9 +2718,9 @@ actions:
                         {% set result = [] %}
                         {% for person in scheduled_notification_persons %}
                           {% if is_state(person, 'home') %}
-                            {% set tracker = state_attr(person, 'device_trackers') %}
-                            {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
-                              {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                            {% set trackers = state_attr(person, 'device_trackers') %}
+                            {% if trackers and trackers | length > 0 %}
+                              {% set tracker_name = (trackers | first) | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
                                 {% set result = result + ['notify.mobile_app_' + tracker_name] %}
                               {% endif %}
@@ -2903,9 +2903,9 @@ actions:
                         {% set result = [] %}
                         {% for person in scheduled_notification_persons %}
                           {% if is_state(person, 'home') %}
-                            {% set tracker = state_attr(person, 'device_trackers') %}
-                            {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
-                              {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                            {% set trackers = state_attr(person, 'device_trackers') %}
+                            {% if trackers and trackers | length > 0 %}
+                              {% set tracker_name = (trackers | first) | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
                                 {% set result = result + ['notify.mobile_app_' + tracker_name] %}
                               {% endif %}
@@ -3089,9 +3089,9 @@ actions:
                         {% set result = [] %}
                         {% for person in scheduled_notification_persons %}
                           {% if is_state(person, 'home') %}
-                            {% set tracker = state_attr(person, 'device_trackers') %}
-                            {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
-                              {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                            {% set trackers = state_attr(person, 'device_trackers') %}
+                            {% if trackers and trackers | length > 0 %}
+                              {% set tracker_name = (trackers | first) | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
                                 {% set result = result + ['notify.mobile_app_' + tracker_name] %}
                               {% endif %}
@@ -3340,9 +3340,9 @@ actions:
                     {% set result = [] %}
                     {% for person in pickup_notification_persons %}
                       {% if is_state(person, 'home') %}
-                        {% set tracker = state_attr(person, 'device_trackers') %}
-                        {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
-                          {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                        {% set trackers = state_attr(person, 'device_trackers') %}
+                        {% if trackers and trackers | length > 0 %}
+                          {% set tracker_name = (trackers | first) | replace('device_tracker.', '') %}
                           {% if tracker_name | length > 0 %}
                             {% set result = result + ['notify.mobile_app_' + tracker_name] %}
                           {% endif %}
@@ -3615,9 +3615,9 @@ actions:
                     {% set result = [] %}
                     {% for person in pickup_notification_persons %}
                       {% if is_state(person, 'home') %}
-                        {% set tracker = state_attr(person, 'device_trackers') %}
-                        {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
-                          {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                        {% set trackers = state_attr(person, 'device_trackers') %}
+                        {% if trackers and trackers | length > 0 %}
+                          {% set tracker_name = (trackers | first) | replace('device_tracker.', '') %}
                           {% if tracker_name | length > 0 %}
                             {% set result = result + ['notify.mobile_app_' + tracker_name] %}
                           {% endif %}
@@ -3869,9 +3869,9 @@ actions:
                     {% set result = [] %}
                     {% for person in pickup_notification_persons %}
                       {% if is_state(person, 'home') %}
-                        {% set tracker = state_attr(person, 'device_trackers') %}
-                        {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
-                          {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                        {% set trackers = state_attr(person, 'device_trackers') %}
+                        {% if trackers and trackers | length > 0 %}
+                          {% set tracker_name = (trackers | first) | replace('device_tracker.', '') %}
                           {% if tracker_name | length > 0 %}
                             {% set result = result + ['notify.mobile_app_' + tracker_name] %}
                           {% endif %}
@@ -4146,9 +4146,9 @@ actions:
                     {% set result = [] %}
                     {% for person in pickup_notification_persons %}
                       {% if is_state(person, 'home') %}
-                        {% set tracker = state_attr(person, 'device_trackers') %}
-                        {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
-                          {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                        {% set trackers = state_attr(person, 'device_trackers') %}
+                        {% if trackers and trackers | length > 0 %}
+                          {% set tracker_name = (trackers | first) | replace('device_tracker.', '') %}
                           {% if tracker_name | length > 0 %}
                             {% set result = result + ['notify.mobile_app_' + tracker_name] %}
                           {% endif %}
@@ -4400,9 +4400,9 @@ actions:
                     {% set result = [] %}
                     {% for person in pickup_notification_persons %}
                       {% if is_state(person, 'home') %}
-                        {% set tracker = state_attr(person, 'device_trackers') %}
-                        {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
-                          {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                        {% set trackers = state_attr(person, 'device_trackers') %}
+                        {% if trackers and trackers | length > 0 %}
+                          {% set tracker_name = (trackers | first) | replace('device_tracker.', '') %}
                           {% if tracker_name | length > 0 %}
                             {% set result = result + ['notify.mobile_app_' + tracker_name] %}
                           {% endif %}
@@ -4677,9 +4677,9 @@ actions:
                     {% set result = [] %}
                     {% for person in pickup_notification_persons %}
                       {% if is_state(person, 'home') %}
-                        {% set tracker = state_attr(person, 'device_trackers') %}
-                        {% if tracker and tracker not in ['', 'unknown', 'unavailable', none] %}
-                          {% set tracker_name = tracker | replace('device_tracker.', '') %}
+                        {% set trackers = state_attr(person, 'device_trackers') %}
+                        {% if trackers and trackers | length > 0 %}
+                          {% set tracker_name = (trackers | first) | replace('device_tracker.', '') %}
                           {% if tracker_name | length > 0 %}
                             {% set result = result + ['notify.mobile_app_' + tracker_name] %}
                           {% endif %}
