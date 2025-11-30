@@ -50,27 +50,59 @@ Related entities (status, mode, map, camera) are auto-detected.
 <details>
 <summary><b>Workflow Overview</b></summary>
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        TRIGGER                                  │
-│              (Schedule / Button / Event)                        │
-└─────────────────────┬───────────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   BASE STATION MAP?                             │
-└─────────────┬───────────────────────────────┬───────────────────┘
-              │ Yes                           │ No
-              ▼                               ▼
-┌─────────────────────────┐     ┌─────────────────────────────────┐
-│   Start immediately     │     │   PREPARATION WORKFLOW          │
-│   No intervention       │     │                                 │
-│   needed                │     │   1. Notify → "Prepare Robot"   │
-└─────────────────────────┘     │   2. Wash mop (if sweep+mop)    │
-                                │   3. Start → Pause for pickup   │
-                                │   4. Notify → "Start Cleaning"  │
-                                │   5. Transport & Resume         │
-                                └─────────────────────────────────┘
+```mermaid
+flowchart TB
+    %% Styling
+    classDef trigger fill:#6366f1,stroke:#4338ca,color:#fff,stroke-width:2px
+    classDef decision fill:#f59e0b,stroke:#d97706,color:#fff,stroke-width:2px
+    classDef action fill:#10b981,stroke:#059669,color:#fff,stroke-width:2px
+    classDef user fill:#ec4899,stroke:#db2777,color:#fff,stroke-width:2px
+    classDef success fill:#22c55e,stroke:#16a34a,color:#fff,stroke-width:3px
+
+    %% Main Flow
+    START(["⚡ Trigger"]):::trigger
+    START --> MODE
+
+    subgraph CONFIG [" ⚙️ Configuration "]
+        direction TB
+        MODE{{"Mode Set?"}}:::decision
+        MODE -->|No| SETMODE["Set Sweep / Mop"]:::action
+        MODE -->|Yes| MAP
+        SETMODE --> MAP
+        MAP{{"Map Selected?"}}:::decision
+        MAP -->|No| SETMAP["Select Map"]:::action
+        MAP -->|Yes| CHECK
+        SETMAP --> CHECK
+        CHECK["Validate Settings"]:::action
+    end
+
+    CHECK --> BASE
+    BASE{{"🏠 Base Station Map?"}}:::decision
+
+    %% Direct Path
+    BASE -->|Yes| DIRECT["🚀 Start Cleaning"]:::action
+    DIRECT --> DONE(["✅ Done"]):::success
+
+    %% Preparation Path
+    BASE -->|No| PREP
+
+    subgraph PREP [" 🚿 Preparation "]
+        direction TB
+        NOTIFY1["📱 Notify User"]:::user
+        NOTIFY1 --> CONFIRM{{"Confirm?"}}:::decision
+        CONFIRM -->|Skip| ABORT["❌ Abort"]
+        CONFIRM -->|Prepare| WASH
+        WASH{{"Mop Mode?"}}:::decision
+        WASH -->|Yes| MOPWASH["💧 Wash Pads"]:::action
+        WASH -->|No| STARTPAUSE
+        MOPWASH --> STARTPAUSE
+        STARTPAUSE["▶️ Start → ⏸️ Pause"]:::action
+        STARTPAUSE --> NOTIFY2["📱 Pick Up"]:::user
+    end
+
+    NOTIFY2 --> TRANSPORT["🚶 Transport"]:::user
+    TRANSPORT --> RESUME["▶️ Resume"]:::action
+    RESUME --> DONE
 ```
 
 </details>
