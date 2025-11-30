@@ -7,19 +7,19 @@
 A Home Assistant blueprint for controlling Dreame vacuums across multiple floors. Supports scheduled cleaning with automatic transport notifications and manual control via buttons or other triggers.
 
 
-## Features
+## ✨ Features
 
-- Auto-detection of vacuum entities (select vacuum, rest detected automatically)
-- Per-map schedules with sweep/mop modes (3 maps, 6 schedules)
-- Notification workflow with action buttons for transport
-- Multi-recipient notifications with presence checking
-- Segment-based cleaning with configurable repeats
-- Optional customised cleaning using room settings from Dreame app
-- Safety checks: schedule conflicts, dock status, emergency map validation
-- Debug mode with timing measurements
+- 🤖 Auto-detection of vacuum entities (select vacuum, rest detected automatically)
+- 📅 Per-map schedules with sweep/mop modes (3 maps, 6 schedules)
+- 🔔 Notification workflow with action buttons for transport
+- 👥 Multi-recipient notifications with presence checking
+- 🏠 Segment-based cleaning with configurable repeats
+- ✨ Optional customised cleaning using room settings from Dreame app
+- ⚠️ Safety checks: schedule conflicts, dock status, emergency map validation
+- 🐛 Debug mode with timing measurements
 
 
-## Requirements
+## 📋 Requirements
 
 - Home Assistant ≥ 2024.10.0
 - [Dreame Vacuum Integration](https://github.com/Tasshack/dreame-vacuum) ≥ v2.0.0b19
@@ -28,14 +28,14 @@ A Home Assistant blueprint for controlling Dreame vacuums across multiple floors
 - Optional: Mobile app for notifications
 
 
-## Installation
+## 💾 Installation
 
 [![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://github.com/errormastern/dreame-multifloor-control/raw/main/vacuum_control.yaml)
 
 Or manually: **Settings** → **Automations & Scenes** → **Blueprints** → **Import Blueprint**
 
 
-## Quick Start
+## 🚀 Quick Start
 
 1. Create automation from blueprint
 2. Select your vacuum entity
@@ -45,7 +45,7 @@ Or manually: **Settings** → **Automations & Scenes** → **Blueprints** → **
 Related entities (status, mode, map, camera) are auto-detected.
 
 
-## Workflows
+## 🔄 Workflows
 
 <details>
 <summary><b>Workflow Overview</b></summary>
@@ -76,7 +76,7 @@ Related entities (status, mode, map, camera) are auto-detected.
 </details>
 
 
-### Preparation Workflow
+### 🚿 Preparation Workflow
 
 For maps without a base station, the robot prepares at the dock and pauses for transport.
 
@@ -91,10 +91,10 @@ For maps without a base station, the robot prepares at the dock and pauses for t
 Steps 1 is skipped – robot starts directly and pauses for pickup.
 
 > [!NOTE]
-> The delay before pausing allows the robot to move away from charging contacts for easier pickup. See [Timeouts](#timeouts) for configuration.
+> The delay before pausing allows the robot to move away from charging contacts for easier pickup. See [Timeouts](#-timeouts) for configuration.
 
 
-### Scheduled Cleaning
+### 📅 Scheduled Cleaning
 
 The core workflow for time-based cleaning across floors.
 
@@ -102,7 +102,7 @@ The core workflow for time-based cleaning across floors.
 
 **Other maps:**
 1. Schedule triggers → Notification with "Prepare Robot" / "Skip"
-2. Confirm → Robot prepares and pauses (see [Preparation Workflow](#preparation-workflow))
+2. Confirm → Robot prepares and pauses (see [Preparation Workflow](#-preparation-workflow))
 3. Pickup notification → Transport robot
 4. Press "Start Cleaning" → Robot resumes
 
@@ -132,10 +132,10 @@ Adapts automatically based on robot status:
 | Cleaning | Any | Pause immediately |
 | Paused | Any | Resume cleaning |
 | Idle (docked) | Base station map | Start cleaning |
-| Idle (docked) | Other map | Run [Preparation Workflow](#preparation-workflow) |
+| Idle (docked) | Other map | Run [Preparation Workflow](#-preparation-workflow) |
 
 
-### Trigger Setup
+### ⚡ Trigger Setup
 
 Use any Home Assistant trigger type. MQTT and device triggers auto-detect action values from the payload.
 
@@ -143,7 +143,7 @@ Use any Home Assistant trigger type. MQTT and device triggers auto-detect action
 > For state or event triggers, you must set a **Trigger ID** manually (e.g., `fn_start`, `fn_sweep_mode`). Without an ID, the automation cannot determine which function to execute.
 
 
-## Timeouts
+## ⏱️ Timeouts
 
 The blueprint uses timeouts to handle robot state transitions reliably.
 
@@ -156,7 +156,7 @@ The blueprint uses timeouts to handle robot state transitions reliably.
 Adjust these in the blueprint configuration if your robot behaves differently.
 
 
-## Localisation
+## 🌐 Localisation
 
 Customise notification texts in the Localisation section:
 - Mode labels (Sweep/Mop)
@@ -165,14 +165,14 @@ Customise notification texts in the Localisation section:
 Internal logic remains in English.
 
 
-## Technical Notes
+## 📝 Technical Notes
 
 **Automation mode:** `queued` (max: 10) – required for button devices sending press + release events.
 
 **Tested with:** Xiaomi X10+ (Dreame L10s Ultra and other supported models should work).
 
 
-## Links
+## 🔗 Links
 
 - [Dreame Vacuum Integration](https://github.com/Tasshack/dreame-vacuum) – Required integration
 - [Repository](https://github.com/errormastern/dreame-multifloor-control) – Source and releases
