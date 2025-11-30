@@ -1,7 +1,7 @@
 blueprint:
   name: "🤖 Dreame Vacuum Multi-Button Control"
   description: |
-    **Version: 0.8.3**
+    **Version: 0.8.4**
 
     Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.
     Intelligent washing detection and configurable delay for easy robot pickup.
@@ -2161,7 +2161,7 @@ actions:
                         {% else %}{{ target_mode }}{% endif %}
                       # Collect valid notification recipients
                       scheduled_notify_services: >
-                        {% set result = [] %}
+                        {% set ns = namespace(result=[]) %}
                         {% for person in scheduled_notification_persons %}
                           {% if is_state(person, 'home') %}
                             {% set trackers = state_attr(person, 'device_trackers') %}
@@ -2169,17 +2169,17 @@ actions:
                               {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                               {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
-                                {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                                {% set ns.result = ns.result + ['notify.mobile_app_' + tracker_name] %}
                               {% endif %}
                             {% endif %}
                           {% endif %}
                         {% endfor %}
                         {% for group in scheduled_notification_groups %}
                           {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                            {% set result = result + ['notify.' + group] %}
+                            {% set ns.result = ns.result + ['notify.' + group] %}
                           {% endif %}
                         {% endfor %}
-                        {{ result }}
+                        {{ ns.result }}
                   # Send to all valid recipients
                   - repeat:
                       for_each: "{{ scheduled_notify_services }}"
@@ -2347,7 +2347,7 @@ actions:
                         {% else %}{{ target_mode }}{% endif %}
                       # Collect valid notification recipients
                       scheduled_notify_services: >
-                        {% set result = [] %}
+                        {% set ns = namespace(result=[]) %}
                         {% for person in scheduled_notification_persons %}
                           {% if is_state(person, 'home') %}
                             {% set trackers = state_attr(person, 'device_trackers') %}
@@ -2355,17 +2355,17 @@ actions:
                               {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                               {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
-                                {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                                {% set ns.result = ns.result + ['notify.mobile_app_' + tracker_name] %}
                               {% endif %}
                             {% endif %}
                           {% endif %}
                         {% endfor %}
                         {% for group in scheduled_notification_groups %}
                           {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                            {% set result = result + ['notify.' + group] %}
+                            {% set ns.result = ns.result + ['notify.' + group] %}
                           {% endif %}
                         {% endfor %}
-                        {{ result }}
+                        {{ ns.result }}
                   # Send to all valid recipients
                   - repeat:
                       for_each: "{{ scheduled_notify_services }}"
@@ -2533,7 +2533,7 @@ actions:
                         {% else %}{{ target_mode }}{% endif %}
                       # Collect valid notification recipients
                       scheduled_notify_services: >
-                        {% set result = [] %}
+                        {% set ns = namespace(result=[]) %}
                         {% for person in scheduled_notification_persons %}
                           {% if is_state(person, 'home') %}
                             {% set trackers = state_attr(person, 'device_trackers') %}
@@ -2541,17 +2541,17 @@ actions:
                               {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                               {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
-                                {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                                {% set ns.result = ns.result + ['notify.mobile_app_' + tracker_name] %}
                               {% endif %}
                             {% endif %}
                           {% endif %}
                         {% endfor %}
                         {% for group in scheduled_notification_groups %}
                           {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                            {% set result = result + ['notify.' + group] %}
+                            {% set ns.result = ns.result + ['notify.' + group] %}
                           {% endif %}
                         {% endfor %}
-                        {{ result }}
+                        {{ ns.result }}
                   # Send to all valid recipients
                   - repeat:
                       for_each: "{{ scheduled_notify_services }}"
@@ -2719,7 +2719,7 @@ actions:
                         {% else %}{{ target_mode }}{% endif %}
                       # Collect valid notification recipients
                       scheduled_notify_services: >
-                        {% set result = [] %}
+                        {% set ns = namespace(result=[]) %}
                         {% for person in scheduled_notification_persons %}
                           {% if is_state(person, 'home') %}
                             {% set trackers = state_attr(person, 'device_trackers') %}
@@ -2727,17 +2727,17 @@ actions:
                               {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                               {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
-                                {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                                {% set ns.result = ns.result + ['notify.mobile_app_' + tracker_name] %}
                               {% endif %}
                             {% endif %}
                           {% endif %}
                         {% endfor %}
                         {% for group in scheduled_notification_groups %}
                           {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                            {% set result = result + ['notify.' + group] %}
+                            {% set ns.result = ns.result + ['notify.' + group] %}
                           {% endif %}
                         {% endfor %}
-                        {{ result }}
+                        {{ ns.result }}
                   # Send to all valid recipients
                   - repeat:
                       for_each: "{{ scheduled_notify_services }}"
@@ -2905,7 +2905,7 @@ actions:
                         {% else %}{{ target_mode }}{% endif %}
                       # Collect valid notification recipients
                       scheduled_notify_services: >
-                        {% set result = [] %}
+                        {% set ns = namespace(result=[]) %}
                         {% for person in scheduled_notification_persons %}
                           {% if is_state(person, 'home') %}
                             {% set trackers = state_attr(person, 'device_trackers') %}
@@ -2913,17 +2913,17 @@ actions:
                               {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                               {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
-                                {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                                {% set ns.result = ns.result + ['notify.mobile_app_' + tracker_name] %}
                               {% endif %}
                             {% endif %}
                           {% endif %}
                         {% endfor %}
                         {% for group in scheduled_notification_groups %}
                           {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                            {% set result = result + ['notify.' + group] %}
+                            {% set ns.result = ns.result + ['notify.' + group] %}
                           {% endif %}
                         {% endfor %}
-                        {{ result }}
+                        {{ ns.result }}
                   # Send to all valid recipients
                   - repeat:
                       for_each: "{{ scheduled_notify_services }}"
@@ -3092,7 +3092,7 @@ actions:
                         {% else %}{{ target_mode }}{% endif %}
                       # Collect valid notification recipients
                       scheduled_notify_services: >
-                        {% set result = [] %}
+                        {% set ns = namespace(result=[]) %}
                         {% for person in scheduled_notification_persons %}
                           {% if is_state(person, 'home') %}
                             {% set trackers = state_attr(person, 'device_trackers') %}
@@ -3100,17 +3100,17 @@ actions:
                               {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
                               {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
                               {% if tracker_name | length > 0 %}
-                                {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                                {% set ns.result = ns.result + ['notify.mobile_app_' + tracker_name] %}
                               {% endif %}
                             {% endif %}
                           {% endif %}
                         {% endfor %}
                         {% for group in scheduled_notification_groups %}
                           {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                            {% set result = result + ['notify.' + group] %}
+                            {% set ns.result = ns.result + ['notify.' + group] %}
                           {% endif %}
                         {% endfor %}
-                        {{ result }}
+                        {{ ns.result }}
                   # Send to all valid recipients
                   - repeat:
                       for_each: "{{ scheduled_notify_services }}"
