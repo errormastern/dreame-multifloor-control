@@ -9,14 +9,14 @@ A Home Assistant blueprint for controlling Dreame vacuums across multiple floors
 
 ## ✨ Features
 
-- 🤖 Auto-detection of vacuum entities (select vacuum, rest detected automatically)
-- 📅 Per-map schedules with sweep/mop modes (3 maps, 6 schedules)
-- 🔔 Notification workflow with action buttons for transport
-- 👥 Multi-recipient notifications with presence checking
-- 🏠 Segment-based cleaning with configurable repeats
-- ✨ Optional customised cleaning using room settings from Dreame app
-- ⚠️ Safety checks: schedule conflicts, dock status, emergency map validation
-- 🐛 Debug mode with timing measurements
+🤖 Auto-detection of vacuum entities (select vacuum, rest detected automatically)<br>
+📅 Per-map schedules with sweep/mop modes (3 maps, 6 schedules)<br>
+🔔 Notification workflow with action buttons for transport<br>
+👥 Multi-recipient notifications with presence checking<br>
+🏠 Segment-based cleaning with configurable repeats<br>
+✨ Optional customised cleaning using room settings from Dreame app<br>
+⚠️ Safety checks: schedule conflicts, dock status, emergency map validation<br>
+🐛 Debug mode with timing measurements
 
 
 ## 📋 Requirements
@@ -52,57 +52,31 @@ Related entities (status, mode, map, camera) are auto-detected.
 
 ```mermaid
 flowchart TB
-    %% Styling
-    classDef trigger fill:#6366f1,stroke:#4338ca,color:#fff,stroke-width:2px
-    classDef decision fill:#f59e0b,stroke:#d97706,color:#fff,stroke-width:2px
-    classDef action fill:#10b981,stroke:#059669,color:#fff,stroke-width:2px
-    classDef user fill:#ec4899,stroke:#db2777,color:#fff,stroke-width:2px
-    classDef success fill:#22c55e,stroke:#16a34a,color:#fff,stroke-width:3px
+    A([Trigger]) --> A2[Check & Set Options]
+    A2 --> B{Base Station<br>Map?}
 
-    %% Main Flow
-    START(["⚡ Trigger"]):::trigger
-    START --> MODE
+    B -->|Yes| C[Set Mode & Map]
+    C --> C2[Start cleaning]
+    C2 --> D([Done])
 
-    subgraph CONFIG [" ⚙️ Configuration "]
-        direction TB
-        MODE{{"Mode Set?"}}:::decision
-        MODE -->|No| SETMODE["Set Sweep / Mop"]:::action
-        MODE -->|Yes| MAP
-        SETMODE --> MAP
-        MAP{{"Map Selected?"}}:::decision
-        MAP -->|No| SETMAP["Select Map"]:::action
-        MAP -->|Yes| CHECK
-        SETMAP --> CHECK
-        CHECK["Validate Settings"]:::action
-    end
+    B -->|No| F[Send Notification]
+    F --> E[Set Mode & Map]
+    E --> G[Prepare & Pause]
+    G --> H[Transport to floor]
+    H --> I[Manual start]
+    I --> D
 
-    CHECK --> BASE
-    BASE{{"🏠 Base Station Map?"}}:::decision
-
-    %% Direct Path
-    BASE -->|Yes| DIRECT["🚀 Start Cleaning"]:::action
-    DIRECT --> DONE(["✅ Done"]):::success
-
-    %% Preparation Path
-    BASE -->|No| PREP
-
-    subgraph PREP [" 🚿 Preparation "]
-        direction TB
-        NOTIFY1["📱 Notify User"]:::user
-        NOTIFY1 --> CONFIRM{{"Confirm?"}}:::decision
-        CONFIRM -->|Skip| ABORT["❌ Abort"]
-        CONFIRM -->|Prepare| WASH
-        WASH{{"Mop Mode?"}}:::decision
-        WASH -->|Yes| MOPWASH["💧 Wash Pads"]:::action
-        WASH -->|No| STARTPAUSE
-        MOPWASH --> STARTPAUSE
-        STARTPAUSE["▶️ Start → ⏸️ Pause"]:::action
-        STARTPAUSE --> NOTIFY2["📱 Pick Up"]:::user
-    end
-
-    NOTIFY2 --> TRANSPORT["🚶 Transport"]:::user
-    TRANSPORT --> RESUME["▶️ Resume"]:::action
-    RESUME --> DONE
+    style A fill:#c4b5fd,stroke:#8b5cf6,color:#374151
+    style A2 fill:#bfdbfe,stroke:#60a5fa,color:#374151
+    style B fill:#fde68a,stroke:#fbbf24,color:#374151
+    style C fill:#bfdbfe,stroke:#60a5fa,color:#374151
+    style C2 fill:#a7f3d0,stroke:#34d399,color:#374151
+    style D fill:#a7f3d0,stroke:#34d399,color:#374151
+    style E fill:#bfdbfe,stroke:#60a5fa,color:#374151
+    style F fill:#fef3c7,stroke:#fcd34d,color:#374151
+    style G fill:#a7f3d0,stroke:#34d399,color:#374151
+    style H fill:#fef3c7,stroke:#fcd34d,color:#374151
+    style I fill:#fef3c7,stroke:#fcd34d,color:#374151
 ```
 
 </details>
