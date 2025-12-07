@@ -1,6 +1,6 @@
 # Dreame Vacuum – Multi-Floor Control
 
-[![Version](https://img.shields.io/badge/version-0.9.1-blue.svg)](https://github.com/errormastern/dreame-multifloor-control/releases)
+[![Version](https://img.shields.io/badge/version-0.9.2-blue.svg)](https://github.com/errormastern/dreame-multifloor-control/releases)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.10%2B-green.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 
@@ -15,7 +15,7 @@ A Home Assistant blueprint for controlling Dreame vacuums across multiple floors
 👥 Multi-recipient notifications with presence checking<br>
 🏠 Segment-based cleaning with configurable repeats<br>
 ✨ Optional customised cleaning using room settings from Dreame app<br>
-⚠️ Safety checks: schedule conflicts, dock status, emergency map validation<br>
+⚠️ Safety checks: schedule conflicts, dock status, mop readiness<br>
 🐛 Debug mode with timing measurements
 
 
@@ -100,6 +100,19 @@ Steps 1 is skipped – robot starts directly and pauses for pickup.
 > The delay before pausing allows the robot to move away from charging contacts for easier pickup. See [Timeouts](#-timeouts) for configuration.
 
 
+### 💧 Mop Readiness Check
+
+Before starting **Sweep + Mop** mode, the blueprint verifies:
+- Mop pads are installed (`sensor.*_mop_pad` = "installed")
+- Water tank is not empty (`sensor.*_low_water_warning` = "no_warning")
+
+**If not ready:**
+- Scheduled cleaning sends a warning notification with "Start Sweep Only" option
+- Manual start shows a persistent notification and aborts
+
+This prevents failed cleaning attempts when hardware isn't ready.
+
+
 ### 📅 Scheduled Cleaning
 
 The core workflow for time-based cleaning across floors.
@@ -166,7 +179,8 @@ Adjust these in the blueprint configuration if your robot behaves differently.
 
 Customise notification texts in the Localisation section:
 - Mode labels (Sweep/Mop)
-- Button labels (Prepare, Skip, Start, Cancel)
+- Button labels (Prepare, Skip, Start, Cancel, Sweep Only)
+- Warning messages (Mop Not Ready)
 
 Internal logic remains in English.
 

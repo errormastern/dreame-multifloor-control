@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum Multi-Button Control"
   description: |
     **🤖 Dreame Vacuum Multi-Button Control**
-    *Version: 0.9.1*
+    *Version: 0.9.2*
 
     Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.
     Intelligent washing detection and configurable delay for easy robot pickup.
@@ -14,8 +14,10 @@ blueprint:
     🔔 Notification workflow with action buttons for transport preparation
     ⏭️ Manual control via MQTT, device triggers, state changes, or events
     🗺️ Segment-based Map cleaning with configurable repeats
+    💧 Mop readiness check (mop pad + water tank) with sweep-only fallback
 
     **Changelog:**
+    **v0.9.2 Changes:** Added mop readiness check - verifies mop pad installed and water tank not empty before mop+sweep; offers sweep-only fallback via notification
     **v0.9.1 Changes:** Fixed hardcoded timeouts - now using input variables consistently; washing timeout continues on timeout
     **v0.9.0 Changes:** Major refactor - consolidated 12 handlers into 2 unified handlers (-47% code), added `enabled:` for debug, `error: true` on critical stops
     **v0.8.5 Changes:** Dynamic wait for cleaning_mode_select availability after customized_cleaning switch-off (uses has_value)
@@ -757,6 +759,28 @@ blueprint:
             text:
           default: "Cancel Cleaning"
 
+        sweep_only_button_text:
+          name: "Sweep Only Button Label"
+          description: "Button text for sweep-only fallback when mop not ready"
+          selector:
+            text:
+          default: "Start Sweep Only"
+
+        mop_not_ready_title:
+          name: "Mop Not Ready - Title"
+          description: "Notification title when mop pads missing or water empty"
+          selector:
+            text:
+          default: "⚠️ Mop Not Ready"
+
+        mop_not_ready_message:
+          name: "Mop Not Ready - Message"
+          description: "Notification message when mop pads missing or water empty"
+          selector:
+            text:
+              multiline: true
+          default: "Mop pads not installed or water tank empty. Start sweep-only instead?"
+
     # ========================================
     # SECTION G: ADVANCED SETTINGS
     # ========================================
@@ -1065,6 +1089,25 @@ triggers:
       action: "PREPARE_MAP3_MOP"
     id: notification_prepare_map3_mop
 
+  # Sweep-only fallback triggers (when mop not ready)
+  - trigger: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: "PREPARE_MAP1_SWEEP_FALLBACK"
+    id: notification_prepare_map1_sweep_fallback
+
+  - trigger: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: "PREPARE_MAP2_SWEEP_FALLBACK"
+    id: notification_prepare_map2_sweep_fallback
+
+  - trigger: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: "PREPARE_MAP3_SWEEP_FALLBACK"
+    id: notification_prepare_map3_sweep_fallback
+
   - trigger: event
     event_type: mobile_app_notification_action
     event_data:
@@ -1241,6 +1284,11 @@ variables:
   current_base_status: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') }}"
   is_base_warning: "{{ current_base_status in base_warning_states }}"
 
+  # Mop readiness check (for sweep+mop mode)
+  mop_pad_status: "{{ states('sensor.' ~ vacuum_base_name ~ '_mop_pad') }}"
+  water_warning_status: "{{ states('sensor.' ~ vacuum_base_name ~ '_low_water_warning') }}"
+  mop_ready: "{{ mop_pad_status == 'installed' and water_warning_status == 'no_warning' }}"
+
   # Per-map cleaning repeats take priority, fall back to global setting
   repeats: "{{ current_map_config.cleaning_repeats | default(global_cleaning_repeats) | default(2) }}"
   moistening_status: !input moistening_status
@@ -1292,6 +1340,9 @@ variables:
   skip_button: !input skip_button_text
   start_cleaning_button: !input start_cleaning_button_text
   cancel_cleaning_button: !input cancel_cleaning_button_text
+  sweep_only_button: !input sweep_only_button_text
+  mop_not_ready_title: !input mop_not_ready_title
+  mop_not_ready_message: !input mop_not_ready_message
 
   # ========================================
   # SCHEDULE HANDLING & CONFLICT DETECTION
@@ -1739,6 +1790,21 @@ actions:
 
                 # On other map → Start and pause (for manual transport)
                 default:
+                  # Mop readiness check for smart start (non-base station)
+                  - if: "{{ current_mode == mode_sweeping_mopping and not mop_ready }}"
+                    then:
+                      - action: persistent_notification.create
+                        data:
+                          title: "⚠️ Mop Not Ready"
+                          message: |
+                            Cannot start mop cleaning:
+                            - Mop Pad: {{ mop_pad_status }}
+                            - Water Warning: {{ water_warning_status }}
+                            Switch to sweep-only mode first.
+                          notification_id: "mop_not_ready_{{ vacuum_base_name }}"
+                      - stop: "Mop not ready"
+                        error: true
+
                   # Sweep+Mop mode: Prepare base station for mop washing
                   # For sweep-only, self_clean stays OFF (no moistening needed)
                   - if:
@@ -2063,7 +2129,7 @@ actions:
                 {% if 'map1' in trigger.id %}1
                 {% elif 'map2' in trigger.id %}2
                 {% else %}3{% endif %}
-              _is_mop: "{{ 'mop' in trigger.id }}"
+              _is_mop: "{{ 'mop' in trigger.id and 'fallback' not in trigger.id }}"
               target_mode: "{{ mode_sweeping_mopping if _is_mop else mode_sweeping }}"
               target_map_name: "{{ [map_1_name, map_2_name, map_3_name][_map_num - 1] }}"
               target_map_config: "{{ map_config['map_' ~ _map_num] }}"
@@ -2211,39 +2277,69 @@ actions:
                           {% endif %}
                         {% endfor %}
                         {{ ns.result }}
+                      sweep_fallback_action_id: "PREPARE_MAP{{ _map_num }}_SWEEP_FALLBACK"
 
-                  - repeat:
-                      for_each: "{{ scheduled_notify_services }}"
-                      sequence:
-                        - action: "{{ repeat.item }}"
-                          continue_on_error: true
-                          data:
-                            title: !input scheduled_notification_title
-                            message: !input scheduled_notification_message
-                            data:
-                              actions:
-                                - action: "{{ prepare_action_id }}"
-                                  title: "{{ prepare_button }}"
-                                - action: "SKIP_CLEANING"
-                                  title: "{{ skip_button }}"
-                              push:
-                                interruption-level: "{{ scheduled_notification_interruption_level }}"
-                                sound: >
-                                  {% if scheduled_notification_critical %}
-                                    {
-                                      "name": "{{ scheduled_notification_sound }}",
-                                      "critical": 1,
-                                      "volume": {{ scheduled_notification_volume }}
-                                    }
-                                  {% else %}
-                                    "{{ scheduled_notification_sound }}"
-                                  {% endif %}
+                  # Check mop readiness for mop mode
+                  - if: "{{ target_mode == mode_sweeping_mopping and not mop_ready }}"
+                    then:
+                      # Send warning notification with sweep-only fallback option
+                      - repeat:
+                          for_each: "{{ scheduled_notify_services }}"
+                          sequence:
+                            - action: "{{ repeat.item }}"
+                              continue_on_error: true
+                              data:
+                                title: "{{ mop_not_ready_title }}"
+                                message: "{{ mop_not_ready_message }}"
+                                data:
+                                  actions:
+                                    - action: "{{ sweep_fallback_action_id }}"
+                                      title: "{{ sweep_only_button }}"
+                                    - action: "SKIP_CLEANING"
+                                      title: "{{ skip_button }}"
+                                  push:
+                                    interruption-level: "{{ scheduled_notification_interruption_level }}"
 
-                  - action: persistent_notification.create
-                    enabled: "{{ debug_mode }}"
-                    data:
-                      title: "🔔 {{ schedule_label }}"
-                      message: "Notification sent, awaiting preparation"
+                      - action: persistent_notification.create
+                        enabled: "{{ debug_mode }}"
+                        data:
+                          title: "⚠️ Mop Not Ready"
+                          message: "Mop: {{ mop_pad_status }} | Water: {{ water_warning_status }}"
+
+                    else:
+                      # Normal notification flow
+                      - repeat:
+                          for_each: "{{ scheduled_notify_services }}"
+                          sequence:
+                            - action: "{{ repeat.item }}"
+                              continue_on_error: true
+                              data:
+                                title: !input scheduled_notification_title
+                                message: !input scheduled_notification_message
+                                data:
+                                  actions:
+                                    - action: "{{ prepare_action_id }}"
+                                      title: "{{ prepare_button }}"
+                                    - action: "SKIP_CLEANING"
+                                      title: "{{ skip_button }}"
+                                  push:
+                                    interruption-level: "{{ scheduled_notification_interruption_level }}"
+                                    sound: >
+                                      {% if scheduled_notification_critical %}
+                                        {
+                                          "name": "{{ scheduled_notification_sound }}",
+                                          "critical": 1,
+                                          "volume": {{ scheduled_notification_volume }}
+                                        }
+                                      {% else %}
+                                        "{{ scheduled_notification_sound }}"
+                                      {% endif %}
+
+                      - action: persistent_notification.create
+                        enabled: "{{ debug_mode }}"
+                        data:
+                          title: "🔔 {{ schedule_label }}"
+                          message: "Notification sent, awaiting preparation"
 
       # ========================================
       # NOTIFICATION ACTION HANDLERS
@@ -2261,7 +2357,7 @@ actions:
                 {% if 'map1' in trigger.id %}1
                 {% elif 'map2' in trigger.id %}2
                 {% else %}3{% endif %}
-              _is_mop: "{{ 'mop' in trigger.id }}"
+              _is_mop: "{{ 'mop' in trigger.id and 'fallback' not in trigger.id }}"
               notification_target_mode: "{{ mode_sweeping_mopping if _is_mop else mode_sweeping }}"
               notification_target_map_name: "{{ [map_1_name, map_2_name, map_3_name][_map_num - 1] }}"
               notification_cleaning_repeats: "{{ map_config['map_' ~ _map_num].cleaning_repeats }}"
@@ -2276,6 +2372,20 @@ actions:
                   message: "Robot not docked! Please dock and retry."
                   notification_id: "prepare_dock_error_{{ vacuum_base_name }}"
               - stop: "Robot not docked, cannot start preparation"
+                error: true
+
+          # Mop readiness check (only for mop mode, skip for fallback)
+          - if: "{{ _is_mop and not mop_ready }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "⚠️ {{ schedule_label }} - Mop Not Ready"
+                  message: |
+                    Cannot start mop cleaning:
+                    - Mop Pad: {{ mop_pad_status }}
+                    - Water Warning: {{ water_warning_status }}
+                  notification_id: "mop_not_ready_{{ vacuum_base_name }}"
+              - stop: "Mop not ready - pad not installed or water empty"
                 error: true
 
           # Debug: Start
