@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum Multi-Button Control"
   description: |
     **🤖 Dreame Vacuum Multi-Button Control**
-    *Version: 0.8.4*
+    *Version: 0.8.5*
 
     Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.
     Intelligent washing detection and configurable delay for easy robot pickup.
@@ -16,10 +16,10 @@ blueprint:
     🗺️ Segment-based Map cleaning with configurable repeats
 
     **Chanelog:**
-    **v0.8.3 Changes:** Fixed device_trackers type check using HA-documented 'is string_like' test
-    **v0.8.2 Changes:** Multi-recipient notifications - select multiple persons (presence-checked) and/or notification groups
-    **v0.8.1 Changes:** Improved robustness - entity availability checks and error handling prevent automation aborts when entities are unavailable
-    **v0.8.0 Changes:** Added customized cleaning support - uses room settings from Dreame app when available (cleaning sequence, per-room suction/water/repeats)
+    **v0.8.5 Changes:** Dynamic wait for cleaning_mode_select availability after customized_cleaning switch-off (uses has_value)
+    **v0.8.4 Changes:** Fixed device_trackers type check using HA-documented 'is string_like' test
+    **v0.8.3 Changes:** Multi-recipient notifications - select multiple persons (presence-checked) and/or notification groups
+    **v0.8.2 Changes:** Improved robustness - entity availability checks and error handling prevent automation aborts when entities are unavailable
 
     **Requirements:**
     • Home Assistant ≥ 2024.10.0
@@ -1540,6 +1540,11 @@ actions:
                 timeout: 10
                 continue_on_timeout: false
 
+          # Wait for cleaning_mode_select to become available after customized_cleaning change
+          - wait_template: "{{ has_value(cleaning_mode_select) }}"
+            timeout: 10
+            continue_on_timeout: false
+
           - action: select.select_option
             continue_on_error: true  # Don't abort if select entity unavailable
             target:
@@ -1573,6 +1578,11 @@ actions:
               - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
                 timeout: 10
                 continue_on_timeout: false
+
+          # Wait for cleaning_mode_select to become available after customized_cleaning change
+          - wait_template: "{{ has_value(cleaning_mode_select) }}"
+            timeout: 10
+            continue_on_timeout: false
 
           - action: select.select_option
             continue_on_error: true  # Don't abort if select entity unavailable
@@ -2094,6 +2104,11 @@ actions:
                 timeout: 10
                 continue_on_timeout: false
 
+          # Wait for cleaning_mode_select to become available after customized_cleaning change
+          - wait_template: "{{ has_value(cleaning_mode_select) }}"
+            timeout: 10
+            continue_on_timeout: false
+
           # Enable cleaning_sequence (if available)
           - if: "{{ has_cleaning_sequence }}"
             then:
@@ -2268,6 +2283,11 @@ actions:
               - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
                 timeout: 10
                 continue_on_timeout: false
+
+          # Wait for cleaning_mode_select to become available after customized_cleaning change
+          - wait_template: "{{ has_value(cleaning_mode_select) }}"
+            timeout: 10
+            continue_on_timeout: false
 
           - action: select.select_option
             continue_on_error: true  # Don't abort if select entity unavailable
@@ -2455,6 +2475,11 @@ actions:
                 timeout: 10
                 continue_on_timeout: false
 
+          # Wait for cleaning_mode_select to become available after customized_cleaning change
+          - wait_template: "{{ has_value(cleaning_mode_select) }}"
+            timeout: 10
+            continue_on_timeout: false
+
           - action: select.select_option
             continue_on_error: true  # Don't abort if select entity unavailable
             target:
@@ -2641,6 +2666,11 @@ actions:
                 timeout: 10
                 continue_on_timeout: false
 
+          # Wait for cleaning_mode_select to become available after customized_cleaning change
+          - wait_template: "{{ has_value(cleaning_mode_select) }}"
+            timeout: 10
+            continue_on_timeout: false
+
           - action: select.select_option
             continue_on_error: true  # Don't abort if select entity unavailable
             target:
@@ -2826,6 +2856,11 @@ actions:
               - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
                 timeout: 10
                 continue_on_timeout: false
+
+          # Wait for cleaning_mode_select to become available after customized_cleaning change
+          - wait_template: "{{ has_value(cleaning_mode_select) }}"
+            timeout: 10
+            continue_on_timeout: false
 
           - action: select.select_option
             continue_on_error: true  # Don't abort if select entity unavailable
@@ -3015,6 +3050,11 @@ actions:
                   - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
                     timeout: 10
                     continue_on_timeout: false
+
+              # Wait for cleaning_mode_select to become available after customized_cleaning change
+              - wait_template: "{{ has_value(cleaning_mode_select) }}"
+                timeout: 10
+                continue_on_timeout: false
 
               - action: select.select_option
                 continue_on_error: true  # Don't abort if select entity unavailable
