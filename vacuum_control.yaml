@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum Multi-Button Control"
   description: |
     **🤖 Dreame Vacuum Multi-Button Control**
-    *Version: 0.8.5*
+    *Version: 0.9.0*
 
     Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.
     Intelligent washing detection and configurable delay for easy robot pickup.
@@ -15,11 +15,11 @@ blueprint:
     ⏭️ Manual control via MQTT, device triggers, state changes, or events
     🗺️ Segment-based Map cleaning with configurable repeats
 
-    **Chanelog:**
+    **Changelog:**
+    **v0.9.0 Changes:** Major refactor - consolidated 12 handlers into 2 unified handlers (-47% code), added `enabled:` for debug, `error: true` on critical stops
     **v0.8.5 Changes:** Dynamic wait for cleaning_mode_select availability after customized_cleaning switch-off (uses has_value)
     **v0.8.4 Changes:** Fixed device_trackers type check using HA-documented 'is string_like' test
     **v0.8.3 Changes:** Multi-recipient notifications - select multiple persons (presence-checked) and/or notification groups
-    **v0.8.2 Changes:** Improved robustness - entity availability checks and error handling prevent automation aborts when entities are unavailable
 
     **Requirements:**
     • Home Assistant ≥ 2024.10.0
@@ -1117,7 +1117,7 @@ variables:
 
   map_1_name: >
     {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_1' %}
-    {% if states(map_entity) not in ['unknown', 'unavailable'] %}
+    {% if has_value(map_entity) %}
       {{ state_attr(map_entity, 'custom_name') | default(state_attr(map_entity, 'map_name'), true) }}
     {% else %}
       Map 1
@@ -1125,7 +1125,7 @@ variables:
 
   map_2_name: >
     {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_2' %}
-    {% if states(map_entity) not in ['unknown', 'unavailable'] %}
+    {% if has_value(map_entity) %}
       {{ state_attr(map_entity, 'custom_name') | default(state_attr(map_entity, 'map_name'), true) }}
     {% else %}
       Map 2
@@ -1133,7 +1133,7 @@ variables:
 
   map_3_name: >
     {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_3' %}
-    {% if states(map_entity) not in ['unknown', 'unavailable'] %}
+    {% if has_value(map_entity) %}
       {{ state_attr(map_entity, 'custom_name') | default(state_attr(map_entity, 'map_name'), true) }}
     {% else %}
       Map 3
@@ -1144,7 +1144,7 @@ variables:
     {% set ns = namespace(found='') %}
     {% for i in range(1, 4) %}
       {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_' ~ i %}
-      {% if states(map_entity) not in ['unknown', 'unavailable'] %}
+      {% if has_value(map_entity) %}
         {% set charger_pos = state_attr(map_entity, 'charger_position') %}
         {% if charger_pos is not none %}
           {% set ns.found = state_attr(map_entity, 'custom_name') | default(state_attr(map_entity, 'map_name'), true) %}
@@ -1186,8 +1186,8 @@ variables:
   use_customized_cleaning_input: !input use_customized_cleaning
 
   # Check if switches are available
-  cleaning_sequence_available: "{{ states('switch.' ~ vacuum_base_name ~ '_cleaning_sequence') not in ['unknown', 'unavailable'] }}"
-  customized_cleaning_available: "{{ states('switch.' ~ vacuum_base_name ~ '_customized_cleaning') not in ['unknown', 'unavailable'] }}"
+  cleaning_sequence_available: "{{ has_value('switch.' ~ vacuum_base_name ~ '_cleaning_sequence') }}"
+  customized_cleaning_available: "{{ has_value('switch.' ~ vacuum_base_name ~ '_customized_cleaning') }}"
 
   # Determine if features should be used
   should_use_cleaning_sequence: "{{ use_cleaning_sequence_input and cleaning_sequence_available }}"
@@ -1373,7 +1373,7 @@ variables:
   # Room/Segment Data Processing (simplified with filters)
   # Extract room_id from rooms dict (preferred) - with entity availability check
   room_ids: >
-    {% if states(map_camera) not in ['unknown', 'unavailable'] %}
+    {% if has_value(map_camera) %}
       {{ state_attr(map_camera, 'rooms').values() | map(attribute='room_id') | list if state_attr(map_camera, 'rooms') else [] }}
     {% else %}
       []
@@ -1381,7 +1381,7 @@ variables:
 
   # Extract segment_id from segments dict (fallback: use keys if segment_id unavailable) - with entity availability check
   segment_ids: >
-    {% if states(map_camera) not in ['unknown', 'unavailable'] %}
+    {% if has_value(map_camera) %}
       {{ state_attr(map_camera, 'segments').values() | map(attribute='segment_id') | list if state_attr(map_camera, 'segments') and state_attr(map_camera, 'segments').values() | map(attribute='segment_id') | list | length > 0 else (state_attr(map_camera, 'segments').keys() | map('int') | list if state_attr(map_camera, 'segments') else []) }}
     {% else %}
       []
@@ -1462,6 +1462,7 @@ actions:
                 Check robot for issues (stuck, bin full, etc.) and clear error before retrying.
               notification_id: "dreame_error_{{ vacuum_base_name }}"
           - stop: "Robot in error state, aborting automation"
+            error: true
 
       # ========================================
       # BASE STATION WARNING DETECTED
@@ -1487,6 +1488,7 @@ actions:
                 {% endif %}
               notification_id: "dreame_base_warning_{{ vacuum_base_name }}"
           - stop: "Base station warning, aborting automation"
+            error: true
 
   # ========================================
   # MAIN LOGIC - Function Routing (by trigger.id)
@@ -2051,102 +2053,116 @@ actions:
       # 3. If map WITHOUT base station → Send notification, wait for user action
 
       # ========================================
-      # SCHEDULE 1: Map 1 Sweep Schedule
+      # UNIFIED SCHEDULE HANDLER (Maps 1-3, Sweep/Mop)
       # ========================================
-      - conditions: "{{ trigger.id == 'schedule_map1_sweep' and map_1_sweep_schedule_entity != 'none' }}"
+      - conditions: "{{ trigger.id.startswith('schedule_map') }}"
         sequence:
-          # Extract map number and mode from trigger for dynamic lookups
+          # Dynamic variable extraction from trigger.id
           - variables:
-              map_number: 1
-              target_mode: "{{ mode_sweeping }}"
-              target_map_name: "{{ map_1_name }}"
-              target_map_config: "{{ map_config.map_1 }}"
-              schedule_label: "Map 1 Sweep"
+              _map_num: >
+                {% if 'map1' in trigger.id %}1
+                {% elif 'map2' in trigger.id %}2
+                {% else %}3{% endif %}
+              _is_mop: "{{ 'mop' in trigger.id }}"
+              target_mode: "{{ mode_sweeping_mopping if _is_mop else mode_sweeping }}"
+              target_map_name: "{{ [map_1_name, map_2_name, map_3_name][_map_num - 1] }}"
+              target_map_config: "{{ map_config['map_' ~ _map_num] }}"
+              schedule_label: "Map {{ _map_num }} {{ 'Mop' if _is_mop else 'Sweep' }}"
+              prepare_action_id: "PREPARE_MAP{{ _map_num }}_{{ 'MOP' if _is_mop else 'SWEEP' }}"
+              # Check if this schedule is enabled
+              _schedule_entity: >
+                {% set entities = {
+                  'schedule_map1_sweep': map_1_sweep_schedule_entity,
+                  'schedule_map1_mop': map_1_mop_schedule_entity,
+                  'schedule_map2_sweep': map_2_sweep_schedule_entity,
+                  'schedule_map2_mop': map_2_mop_schedule_entity,
+                  'schedule_map3_sweep': map_3_sweep_schedule_entity,
+                  'schedule_map3_mop': map_3_mop_schedule_entity
+                } %}
+                {{ entities.get(trigger.id, 'none') }}
 
-          # Conflict check: Abort if already cleaning
+          # Skip if schedule entity is "none"
+          - if: "{{ _schedule_entity == 'none' }}"
+            then:
+              - stop: "Schedule not configured"
+
+          # Conflict check
           - if: "{{ schedule_conflict_detected }}"
             then:
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "⚠️ Schedule Conflict"
-                      message: "{{ schedule_label }} skipped - robot already cleaning"
+              - action: persistent_notification.create
+                enabled: "{{ debug_mode }}"
+                data:
+                  title: "⚠️ Schedule Conflict"
+                  message: "{{ schedule_label }} skipped - robot busy"
               - stop: "Schedule conflict"
+                error: true
 
-          # Dock check: Abort if robot not docked
+          # Dock check
           - if: "{{ not is_docked }}"
             then:
               - action: persistent_notification.create
                 data:
-                  title: "⚠️ Schedule Failed: {{ schedule_label }}"
-                  message: |
-                    **Robot is not docked!**
-
-                    **Schedule:** {{ schedule_label }}
-                    **Robot State:** {{ states(vacuum_entity) }}
-                    **Current Map:** {{ current_map_name }}
-
-                    Please ensure robot is docked at base station before scheduled cleaning.
-                    Schedule will retry at next trigger time.
+                  title: "⚠️ {{ schedule_label }} Failed"
+                  message: "Robot not docked! Please dock and retry."
                   notification_id: "schedule_dock_error_{{ vacuum_base_name }}"
               - stop: "Robot not docked, cannot start scheduled cleaning"
+                error: true
 
-          # Set mode and switch map
-          # Disable customized_cleaning if active (enables global cleaning_mode)
+          # Disable customized_cleaning if active
           - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
             then:
               - action: switch.turn_off
-                continue_on_error: true  # Don't abort if switch unavailable
+                continue_on_error: true
                 target:
                   entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
               - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
                 timeout: 10
                 continue_on_timeout: false
 
-          # Wait for cleaning_mode_select to become available after customized_cleaning change
+          # Wait for cleaning_mode_select availability
           - wait_template: "{{ has_value(cleaning_mode_select) }}"
             timeout: 10
             continue_on_timeout: false
 
-          # Enable cleaning_sequence (if available)
-          - if: "{{ has_cleaning_sequence }}"
+          # Enable cleaning_sequence if available
+          - if: "{{ has_cleaning_sequence and is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
             then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
+              - action: switch.turn_on
+                continue_on_error: true
+                target:
+                  entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
+              - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
+                timeout: 5
+                continue_on_timeout: true
 
+          # Set mode
           - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
+            continue_on_error: true
             target:
               entity_id: "{{ cleaning_mode_select }}"
             data:
               option: "{{ target_mode }}"
 
+          # Switch map
           - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
+            continue_on_error: true
             target:
               entity_id: "{{ selected_map_select }}"
             data:
               option: "{{ target_map_name }}"
 
+          # Verify map switch
           - wait_template: "{{ states(selected_map_select) == target_map_name }}"
             timeout: 30
             continue_on_timeout: false
 
-          # Start cleaning if base station map, otherwise notify
+          # Base station map → Start immediately
           - if: "{{ target_map_config.has_base_station }}"
             then:
               - if: "{{ use_segment_service and has_segments }}"
                 then:
                   - action: dreame_vacuum.vacuum_clean_segment
-                    continue_on_error: true  # Don't abort if vacuum unavailable
+                    continue_on_error: true
                     target:
                       entity_id: "{{ vacuum_entity }}"
                     data:
@@ -2154,212 +2170,20 @@ actions:
                       repeats: "{{ target_map_config.cleaning_repeats }}"
                 else:
                   - action: vacuum.start
-                    continue_on_error: true  # Don't abort if vacuum unavailable
+                    continue_on_error: true
                     target:
                       entity_id: "{{ vacuum_entity }}"
 
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "✅ Schedule Started"
-                      message: "{{ schedule_label }} on base station map"
-            else:
-              # Map WITHOUT base station → Send notification
-              - if: "{{ scheduled_notification_enabled }}"
-                then:
-                  # Define template variables for notification
-                  - variables:
-                      map_name: "{{ target_map_name }}"
-                      schedule_name: "{{ schedule_label }}"
-                      cleaning_mode_display: >
-                        {% if target_mode == mode_sweeping %}{{ sweep_display }}
-                        {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display }}
-                        {% else %}{{ target_mode }}{% endif %}
-                      # Collect valid notification recipients
-                      scheduled_notify_services: >
-                        {% set ns = namespace(result=[]) %}
-                        {% for person in scheduled_notification_persons %}
-                          {% if is_state(person, 'home') %}
-                            {% set trackers = state_attr(person, 'device_trackers') %}
-                            {% if trackers %}
-                              {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
-                              {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
-                              {% if tracker_name | length > 0 %}
-                                {% set ns.result = ns.result + ['notify.mobile_app_' + tracker_name] %}
-                              {% endif %}
-                            {% endif %}
-                          {% endif %}
-                        {% endfor %}
-                        {% for group in scheduled_notification_groups %}
-                          {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                            {% set ns.result = ns.result + ['notify.' + group] %}
-                          {% endif %}
-                        {% endfor %}
-                        {{ ns.result }}
-                  # Send to all valid recipients
-                  - repeat:
-                      for_each: "{{ scheduled_notify_services }}"
-                      sequence:
-                        - action: "{{ repeat.item }}"
-                          continue_on_error: true
-                          data:
-                            title: !input scheduled_notification_title
-                            message: !input scheduled_notification_message
-                            data:
-                              actions:
-                                - action: "PREPARE_MAP1_SWEEP"
-                                  title: "{{ prepare_button }}"
-                                - action: "SKIP_CLEANING"
-                                  title: "{{ skip_button }}"
-                              push:
-                                interruption-level: "{{ scheduled_notification_interruption_level }}"
-                                sound: >
-                                  {% if scheduled_notification_critical %}
-                                    {
-                                      "name": "{{ scheduled_notification_sound }}",
-                                      "critical": 1,
-                                      "volume": {{ scheduled_notification_volume }}
-                                    }
-                                  {% else %}
-                                    "{{ scheduled_notification_sound }}"
-                                  {% endif %}
-
-                  - if: "{{ debug_mode }}"
-                    then:
-                      - action: persistent_notification.create
-                        data:
-                          title: "🔔 Notification Sent"
-                          message: "Waiting for preparation: {{ schedule_label }}"
-
-      # ========================================
-      # SCHEDULE 2: Map 1 Mop Schedule
-      # ========================================
-      - conditions: "{{ trigger.id == 'schedule_map1_mop' and map_1_mop_schedule_entity != 'none' }}"
-        sequence:
-          - variables:
-              map_number: 1
-              target_mode: "{{ mode_sweeping_mopping }}"
-              target_map_name: "{{ map_1_name }}"
-              target_map_config: "{{ map_config.map_1 }}"
-              schedule_label: "Map 1 Mop"
-
-          - if: "{{ schedule_conflict_detected }}"
-            then:
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "⚠️ Schedule Conflict"
-                      message: "{{ schedule_label }} skipped - robot already cleaning"
-              - stop: "Schedule conflict"
-
-          # Dock check: Abort if robot not docked
-          - if: "{{ not is_docked }}"
-            then:
               - action: persistent_notification.create
+                enabled: "{{ debug_mode }}"
                 data:
-                  title: "⚠️ Schedule Failed: {{ schedule_label }}"
-                  message: |
-                    **Robot is not docked!**
+                  title: "✅ {{ schedule_label }}"
+                  message: "Started on base station map"
 
-                    **Schedule:** {{ schedule_label }}
-                    **Robot State:** {{ states(vacuum_entity) }}
-                    **Current Map:** {{ current_map_name }}
-
-                    Please ensure robot is docked at base station before scheduled cleaning.
-                    Schedule will retry at next trigger time.
-                  notification_id: "schedule_dock_error_{{ vacuum_base_name }}"
-              - stop: "Robot not docked, cannot start scheduled cleaning"
-
-          # Set mode and switch map
-          # Disable customized_cleaning if active (enables global cleaning_mode)
-          - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-            then:
-              - action: switch.turn_off
-                continue_on_error: true  # Don't abort if switch unavailable
-                target:
-                  entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-              - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-                timeout: 10
-                continue_on_timeout: false
-
-          # Wait for cleaning_mode_select to become available after customized_cleaning change
-          - wait_template: "{{ has_value(cleaning_mode_select) }}"
-            timeout: 10
-            continue_on_timeout: false
-
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
-            data:
-              option: "{{ target_mode }}"
-
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ selected_map_select }}"
-            data:
-              option: "{{ target_map_name }}"
-
-          - wait_template: "{{ states(selected_map_select) == target_map_name }}"
-            timeout: 30
-            continue_on_timeout: false
-
-          # Enable customized cleaning + sequence (Mop Mode)
-          - if: "{{ has_customized_cleaning }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          - if: "{{ has_cleaning_sequence }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          - if: "{{ target_map_config.has_base_station }}"
-            then:
-              - if: "{{ use_segment_service and has_segments }}"
-                then:
-                  - action: dreame_vacuum.vacuum_clean_segment
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-                    data:
-                      segments: "{{ map_segments }}"
-                      repeats: "{{ target_map_config.cleaning_repeats }}"
-                else:
-                  - action: vacuum.start
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "✅ Schedule Started"
-                      message: "{{ schedule_label }} on base station map"
+            # Non-base station → Send notification
             else:
-              # Map WITHOUT base station → Send notification
               - if: "{{ scheduled_notification_enabled }}"
                 then:
-                  # Define template variables for notification
                   - variables:
                       map_name: "{{ target_map_name }}"
                       schedule_name: "{{ schedule_label }}"
@@ -2367,7 +2191,6 @@ actions:
                         {% if target_mode == mode_sweeping %}{{ sweep_display }}
                         {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display }}
                         {% else %}{{ target_mode }}{% endif %}
-                      # Collect valid notification recipients
                       scheduled_notify_services: >
                         {% set ns = namespace(result=[]) %}
                         {% for person in scheduled_notification_persons %}
@@ -2388,7 +2211,7 @@ actions:
                           {% endif %}
                         {% endfor %}
                         {{ ns.result }}
-                  # Send to all valid recipients
+
                   - repeat:
                       for_each: "{{ scheduled_notify_services }}"
                       sequence:
@@ -2399,7 +2222,7 @@ actions:
                             message: !input scheduled_notification_message
                             data:
                               actions:
-                                - action: "PREPARE_MAP1_MOP"
+                                - action: "{{ prepare_action_id }}"
                                   title: "{{ prepare_button }}"
                                 - action: "SKIP_CLEANING"
                                   title: "{{ skip_button }}"
@@ -2416,777 +2239,11 @@ actions:
                                     "{{ scheduled_notification_sound }}"
                                   {% endif %}
 
-                  - if: "{{ debug_mode }}"
-                    then:
-                      - action: persistent_notification.create
-                        data:
-                          title: "🔔 Notification Sent"
-                          message: "Waiting for preparation: {{ schedule_label }}"
-
-      # ========================================
-      # SCHEDULE 3: Map 2 Sweep Schedule
-      # ========================================
-      - conditions: "{{ trigger.id == 'schedule_map2_sweep' and map_2_sweep_schedule_entity != 'none' }}"
-        sequence:
-          - variables:
-              map_number: 2
-              target_mode: "{{ mode_sweeping }}"
-              target_map_name: "{{ map_2_name }}"
-              target_map_config: "{{ map_config.map_2 }}"
-              schedule_label: "Map 2 Sweep"
-
-          - if: "{{ schedule_conflict_detected }}"
-            then:
-              - if: "{{ debug_mode }}"
-                then:
                   - action: persistent_notification.create
+                    enabled: "{{ debug_mode }}"
                     data:
-                      title: "⚠️ Schedule Conflict"
-                      message: "{{ schedule_label }} skipped - robot already cleaning"
-              - stop: "Schedule conflict"
-
-          # Dock check: Abort if robot not docked
-          - if: "{{ not is_docked }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚠️ Schedule Failed: {{ schedule_label }}"
-                  message: |
-                    **Robot is not docked!**
-
-                    **Schedule:** {{ schedule_label }}
-                    **Robot State:** {{ states(vacuum_entity) }}
-                    **Current Map:** {{ current_map_name }}
-
-                    Please ensure robot is docked at base station before scheduled cleaning.
-                    Schedule will retry at next trigger time.
-                  notification_id: "schedule_dock_error_{{ vacuum_base_name }}"
-              - stop: "Robot not docked, cannot start scheduled cleaning"
-
-          # Set mode and switch map
-          # Disable customized_cleaning if active (enables global cleaning_mode)
-          - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-            then:
-              - action: switch.turn_off
-                continue_on_error: true  # Don't abort if switch unavailable
-                target:
-                  entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-              - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-                timeout: 10
-                continue_on_timeout: false
-
-          # Wait for cleaning_mode_select to become available after customized_cleaning change
-          - wait_template: "{{ has_value(cleaning_mode_select) }}"
-            timeout: 10
-            continue_on_timeout: false
-
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
-            data:
-              option: "{{ target_mode }}"
-
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ selected_map_select }}"
-            data:
-              option: "{{ target_map_name }}"
-
-          - wait_template: "{{ states(selected_map_select) == target_map_name }}"
-            timeout: 30
-            continue_on_timeout: false
-
-          # Enable customized cleaning + sequence (Mop Mode)
-          - if: "{{ has_customized_cleaning }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          - if: "{{ has_cleaning_sequence }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          - if: "{{ target_map_config.has_base_station }}"
-            then:
-              - if: "{{ use_segment_service and has_segments }}"
-                then:
-                  - action: dreame_vacuum.vacuum_clean_segment
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-                    data:
-                      segments: "{{ map_segments }}"
-                      repeats: "{{ target_map_config.cleaning_repeats }}"
-                else:
-                  - action: vacuum.start
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "✅ Schedule Started"
-                      message: "{{ schedule_label }} on base station map"
-            else:
-              # Map WITHOUT base station → Send notification
-              - if: "{{ scheduled_notification_enabled }}"
-                then:
-                  # Define template variables for notification
-                  - variables:
-                      map_name: "{{ target_map_name }}"
-                      schedule_name: "{{ schedule_label }}"
-                      cleaning_mode_display: >
-                        {% if target_mode == mode_sweeping %}{{ sweep_display }}
-                        {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display }}
-                        {% else %}{{ target_mode }}{% endif %}
-                      # Collect valid notification recipients
-                      scheduled_notify_services: >
-                        {% set ns = namespace(result=[]) %}
-                        {% for person in scheduled_notification_persons %}
-                          {% if is_state(person, 'home') %}
-                            {% set trackers = state_attr(person, 'device_trackers') %}
-                            {% if trackers %}
-                              {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
-                              {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
-                              {% if tracker_name | length > 0 %}
-                                {% set ns.result = ns.result + ['notify.mobile_app_' + tracker_name] %}
-                              {% endif %}
-                            {% endif %}
-                          {% endif %}
-                        {% endfor %}
-                        {% for group in scheduled_notification_groups %}
-                          {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                            {% set ns.result = ns.result + ['notify.' + group] %}
-                          {% endif %}
-                        {% endfor %}
-                        {{ ns.result }}
-                  # Send to all valid recipients
-                  - repeat:
-                      for_each: "{{ scheduled_notify_services }}"
-                      sequence:
-                        - action: "{{ repeat.item }}"
-                          continue_on_error: true
-                          data:
-                            title: !input scheduled_notification_title
-                            message: !input scheduled_notification_message
-                            data:
-                              actions:
-                                - action: "PREPARE_MAP2_SWEEP"
-                                  title: "{{ prepare_button }}"
-                                - action: "SKIP_CLEANING"
-                                  title: "{{ skip_button }}"
-                              push:
-                                interruption-level: "{{ scheduled_notification_interruption_level }}"
-                                sound: >
-                                  {% if scheduled_notification_critical %}
-                                    {
-                                      "name": "{{ scheduled_notification_sound }}",
-                                      "critical": 1,
-                                      "volume": {{ scheduled_notification_volume }}
-                                    }
-                                  {% else %}
-                                    "{{ scheduled_notification_sound }}"
-                                  {% endif %}
-
-                  - if: "{{ debug_mode }}"
-                    then:
-                      - action: persistent_notification.create
-                        data:
-                          title: "🔔 Notification Sent"
-                          message: "Waiting for preparation: {{ schedule_label }}"
-
-      # ========================================
-      # SCHEDULE 4: Map 2 Mop Schedule
-      # ========================================
-      - conditions: "{{ trigger.id == 'schedule_map2_mop' and map_2_mop_schedule_entity != 'none' }}"
-        sequence:
-          - variables:
-              map_number: 2
-              target_mode: "{{ mode_sweeping_mopping }}"
-              target_map_name: "{{ map_2_name }}"
-              target_map_config: "{{ map_config.map_2 }}"
-              schedule_label: "Map 2 Mop"
-
-          - if: "{{ schedule_conflict_detected }}"
-            then:
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "⚠️ Schedule Conflict"
-                      message: "{{ schedule_label }} skipped - robot already cleaning"
-              - stop: "Schedule conflict"
-
-          # Dock check: Abort if robot not docked
-          - if: "{{ not is_docked }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚠️ Schedule Failed: {{ schedule_label }}"
-                  message: |
-                    **Robot is not docked!**
-
-                    **Schedule:** {{ schedule_label }}
-                    **Robot State:** {{ states(vacuum_entity) }}
-                    **Current Map:** {{ current_map_name }}
-
-                    Please ensure robot is docked at base station before scheduled cleaning.
-                    Schedule will retry at next trigger time.
-                  notification_id: "schedule_dock_error_{{ vacuum_base_name }}"
-              - stop: "Robot not docked, cannot start scheduled cleaning"
-
-          # Set mode and switch map
-          # Disable customized_cleaning if active (enables global cleaning_mode)
-          - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-            then:
-              - action: switch.turn_off
-                continue_on_error: true  # Don't abort if switch unavailable
-                target:
-                  entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-              - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-                timeout: 10
-                continue_on_timeout: false
-
-          # Wait for cleaning_mode_select to become available after customized_cleaning change
-          - wait_template: "{{ has_value(cleaning_mode_select) }}"
-            timeout: 10
-            continue_on_timeout: false
-
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
-            data:
-              option: "{{ target_mode }}"
-
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ selected_map_select }}"
-            data:
-              option: "{{ target_map_name }}"
-
-          - wait_template: "{{ states(selected_map_select) == target_map_name }}"
-            timeout: 30
-            continue_on_timeout: false
-
-          # Enable customized cleaning + sequence (Mop Mode)
-          - if: "{{ has_customized_cleaning }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          - if: "{{ has_cleaning_sequence }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          - if: "{{ target_map_config.has_base_station }}"
-            then:
-              - if: "{{ use_segment_service and has_segments }}"
-                then:
-                  - action: dreame_vacuum.vacuum_clean_segment
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-                    data:
-                      segments: "{{ map_segments }}"
-                      repeats: "{{ target_map_config.cleaning_repeats }}"
-                else:
-                  - action: vacuum.start
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "✅ Schedule Started"
-                      message: "{{ schedule_label }} on base station map"
-            else:
-              # Map WITHOUT base station → Send notification
-              - if: "{{ scheduled_notification_enabled }}"
-                then:
-                  # Define template variables for notification
-                  - variables:
-                      map_name: "{{ target_map_name }}"
-                      schedule_name: "{{ schedule_label }}"
-                      cleaning_mode_display: >
-                        {% if target_mode == mode_sweeping %}{{ sweep_display }}
-                        {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display }}
-                        {% else %}{{ target_mode }}{% endif %}
-                      # Collect valid notification recipients
-                      scheduled_notify_services: >
-                        {% set ns = namespace(result=[]) %}
-                        {% for person in scheduled_notification_persons %}
-                          {% if is_state(person, 'home') %}
-                            {% set trackers = state_attr(person, 'device_trackers') %}
-                            {% if trackers %}
-                              {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
-                              {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
-                              {% if tracker_name | length > 0 %}
-                                {% set ns.result = ns.result + ['notify.mobile_app_' + tracker_name] %}
-                              {% endif %}
-                            {% endif %}
-                          {% endif %}
-                        {% endfor %}
-                        {% for group in scheduled_notification_groups %}
-                          {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                            {% set ns.result = ns.result + ['notify.' + group] %}
-                          {% endif %}
-                        {% endfor %}
-                        {{ ns.result }}
-                  # Send to all valid recipients
-                  - repeat:
-                      for_each: "{{ scheduled_notify_services }}"
-                      sequence:
-                        - action: "{{ repeat.item }}"
-                          continue_on_error: true
-                          data:
-                            title: !input scheduled_notification_title
-                            message: !input scheduled_notification_message
-                            data:
-                              actions:
-                                - action: "PREPARE_MAP2_MOP"
-                                  title: "{{ prepare_button }}"
-                                - action: "SKIP_CLEANING"
-                                  title: "{{ skip_button }}"
-                              push:
-                                interruption-level: "{{ scheduled_notification_interruption_level }}"
-                                sound: >
-                                  {% if scheduled_notification_critical %}
-                                    {
-                                      "name": "{{ scheduled_notification_sound }}",
-                                      "critical": 1,
-                                      "volume": {{ scheduled_notification_volume }}
-                                    }
-                                  {% else %}
-                                    "{{ scheduled_notification_sound }}"
-                                  {% endif %}
-
-                  - if: "{{ debug_mode }}"
-                    then:
-                      - action: persistent_notification.create
-                        data:
-                          title: "🔔 Notification Sent"
-                          message: "Waiting for preparation: {{ schedule_label }}"
-
-      # ========================================
-      # SCHEDULE 5: Map 3 Sweep Schedule
-      # ========================================
-      - conditions: "{{ trigger.id == 'schedule_map3_sweep' and map_3_sweep_schedule_entity != 'none' }}"
-        sequence:
-          - variables:
-              map_number: 3
-              target_mode: "{{ mode_sweeping }}"
-              target_map_name: "{{ map_3_name }}"
-              target_map_config: "{{ map_config.map_3 }}"
-              schedule_label: "Map 3 Sweep"
-
-          - if: "{{ schedule_conflict_detected }}"
-            then:
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "⚠️ Schedule Conflict"
-                      message: "{{ schedule_label }} skipped - robot already cleaning"
-              - stop: "Schedule conflict"
-
-          # Dock check: Abort if robot not docked
-          - if: "{{ not is_docked }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚠️ Schedule Failed: {{ schedule_label }}"
-                  message: |
-                    **Robot is not docked!**
-
-                    **Schedule:** {{ schedule_label }}
-                    **Robot State:** {{ states(vacuum_entity) }}
-                    **Current Map:** {{ current_map_name }}
-
-                    Please ensure robot is docked at base station before scheduled cleaning.
-                    Schedule will retry at next trigger time.
-                  notification_id: "schedule_dock_error_{{ vacuum_base_name }}"
-              - stop: "Robot not docked, cannot start scheduled cleaning"
-
-          # Set mode and switch map
-          # Disable customized_cleaning if active (enables global cleaning_mode)
-          - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-            then:
-              - action: switch.turn_off
-                continue_on_error: true  # Don't abort if switch unavailable
-                target:
-                  entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-              - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-                timeout: 10
-                continue_on_timeout: false
-
-          # Wait for cleaning_mode_select to become available after customized_cleaning change
-          - wait_template: "{{ has_value(cleaning_mode_select) }}"
-            timeout: 10
-            continue_on_timeout: false
-
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
-            data:
-              option: "{{ target_mode }}"
-
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ selected_map_select }}"
-            data:
-              option: "{{ target_map_name }}"
-
-          - wait_template: "{{ states(selected_map_select) == target_map_name }}"
-            timeout: 30
-            continue_on_timeout: false
-
-          # Enable customized cleaning + sequence (Mop Mode)
-          - if: "{{ has_customized_cleaning }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          - if: "{{ has_cleaning_sequence }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          - if: "{{ target_map_config.has_base_station }}"
-            then:
-              - if: "{{ use_segment_service and has_segments }}"
-                then:
-                  - action: dreame_vacuum.vacuum_clean_segment
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-                    data:
-                      segments: "{{ map_segments }}"
-                      repeats: "{{ target_map_config.cleaning_repeats }}"
-                else:
-                  - action: vacuum.start
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "✅ Schedule Started"
-                      message: "{{ schedule_label }} on base station map"
-            else:
-              # Map WITHOUT base station → Send notification
-              - if: "{{ scheduled_notification_enabled }}"
-                then:
-                  # Define template variables for notification
-                  - variables:
-                      map_name: "{{ target_map_name }}"
-                      schedule_name: "{{ schedule_label }}"
-                      cleaning_mode_display: >
-                        {% if target_mode == mode_sweeping %}{{ sweep_display }}
-                        {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display }}
-                        {% else %}{{ target_mode }}{% endif %}
-                      # Collect valid notification recipients
-                      scheduled_notify_services: >
-                        {% set ns = namespace(result=[]) %}
-                        {% for person in scheduled_notification_persons %}
-                          {% if is_state(person, 'home') %}
-                            {% set trackers = state_attr(person, 'device_trackers') %}
-                            {% if trackers %}
-                              {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
-                              {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
-                              {% if tracker_name | length > 0 %}
-                                {% set ns.result = ns.result + ['notify.mobile_app_' + tracker_name] %}
-                              {% endif %}
-                            {% endif %}
-                          {% endif %}
-                        {% endfor %}
-                        {% for group in scheduled_notification_groups %}
-                          {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                            {% set ns.result = ns.result + ['notify.' + group] %}
-                          {% endif %}
-                        {% endfor %}
-                        {{ ns.result }}
-                  # Send to all valid recipients
-                  - repeat:
-                      for_each: "{{ scheduled_notify_services }}"
-                      sequence:
-                        - action: "{{ repeat.item }}"
-                          continue_on_error: true
-                          data:
-                            title: !input scheduled_notification_title
-                            message: !input scheduled_notification_message
-                            data:
-                              actions:
-                                - action: "PREPARE_MAP3_SWEEP"
-                                  title: "{{ prepare_button }}"
-                                - action: "SKIP_CLEANING"
-                                  title: "{{ skip_button }}"
-                              push:
-                                interruption-level: "{{ scheduled_notification_interruption_level }}"
-                                sound: >
-                                  {% if scheduled_notification_critical %}
-                                    {
-                                      "name": "{{ scheduled_notification_sound }}",
-                                      "critical": 1,
-                                      "volume": {{ scheduled_notification_volume }}
-                                    }
-                                  {% else %}
-                                    "{{ scheduled_notification_sound }}"
-                                  {% endif %}
-
-                  - if: "{{ debug_mode }}"
-                    then:
-                      - action: persistent_notification.create
-                        data:
-                          title: "🔔 Notification Sent"
-                          message: "Waiting for preparation: {{ schedule_label }}"
-
-      # ========================================
-      # SCHEDULE 6: Map 3 Mop Schedule
-      # ========================================
-      - conditions: "{{ trigger.id == 'schedule_map3_mop' and map_3_mop_schedule_entity != 'none' }}"
-        sequence:
-          - variables:
-              map_number: 3
-              target_mode: "{{ mode_sweeping_mopping }}"
-              target_map_name: "{{ map_3_name }}"
-              target_map_config: "{{ map_config.map_3 }}"
-              schedule_label: "Map 3 Mop"
-
-          - if: "{{ schedule_conflict_detected }}"
-            then:
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "⚠️ Schedule Conflict"
-                      message: "{{ schedule_label }} skipped - robot already cleaning"
-              - stop: "Schedule conflict"
-
-          # Dock check: Abort if robot not docked
-          - if: "{{ not is_docked }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚠️ Schedule Failed: {{ schedule_label }}"
-                  message: |
-                    **Robot is not docked!**
-
-                    **Schedule:** {{ schedule_label }}
-                    **Robot State:** {{ states(vacuum_entity) }}
-                    **Current Map:** {{ current_map_name }}
-
-                    Please ensure robot is docked at base station before scheduled cleaning.
-                    Schedule will retry at next trigger time.
-                  notification_id: "schedule_dock_error_{{ vacuum_base_name }}"
-              - stop: "Robot not docked, cannot start scheduled cleaning"
-
-          - if: "{{ target_map_config.has_base_station }}"
-            then:
-              # Base station map → Start cleaning immediately
-              # Set mode and switch map
-              # Disable customized_cleaning if active (enables global cleaning_mode)
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-                then:
-                  - action: switch.turn_off
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-                    timeout: 10
-                    continue_on_timeout: false
-
-              # Wait for cleaning_mode_select to become available after customized_cleaning change
-              - wait_template: "{{ has_value(cleaning_mode_select) }}"
-                timeout: 10
-                continue_on_timeout: false
-
-              - action: select.select_option
-                continue_on_error: true  # Don't abort if select entity unavailable
-                target:
-                  entity_id: "{{ cleaning_mode_select }}"
-                data:
-                  option: "{{ target_mode }}"
-
-              - action: select.select_option
-                continue_on_error: true  # Don't abort if select entity unavailable
-                target:
-                  entity_id: "{{ selected_map_select }}"
-                data:
-                  option: "{{ target_map_name }}"
-
-              - wait_template: "{{ states(selected_map_select) == target_map_name }}"
-                timeout: 30
-                continue_on_timeout: false
-
-              # Enable customized cleaning + sequence (Mop Mode)
-              - if: "{{ has_customized_cleaning }}"
-                then:
-                  - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-                    then:
-                      - action: switch.turn_on
-                        continue_on_error: true  # Don't abort if switch unavailable
-                        target:
-                          entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-                      - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-                        timeout: 5
-                        continue_on_timeout: false
-
-              - if: "{{ has_cleaning_sequence }}"
-                then:
-                  - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-                    then:
-                      - action: switch.turn_on
-                        continue_on_error: true  # Don't abort if switch unavailable
-                        target:
-                          entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-                      - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                        timeout: 5
-                        continue_on_timeout: false
-
-              - if: "{{ use_segment_service and has_segments }}"
-                then:
-                  - action: dreame_vacuum.vacuum_clean_segment
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-                    data:
-                      segments: "{{ map_segments }}"
-                      repeats: "{{ target_map_config.cleaning_repeats }}"
-                else:
-                  - action: vacuum.start
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "✅ Schedule Started"
-                      message: "{{ schedule_label }} on base station map"
-            else:
-              # Map WITHOUT base station → Send notification
-              - if: "{{ scheduled_notification_enabled }}"
-                then:
-                  # Define template variables for notification
-                  - variables:
-                      map_name: "{{ target_map_name }}"
-                      schedule_name: "{{ schedule_label }}"
-                      cleaning_mode_display: >
-                        {% if target_mode == mode_sweeping %}{{ sweep_display }}
-                        {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display }}
-                        {% else %}{{ target_mode }}{% endif %}
-                      # Collect valid notification recipients
-                      scheduled_notify_services: >
-                        {% set ns = namespace(result=[]) %}
-                        {% for person in scheduled_notification_persons %}
-                          {% if is_state(person, 'home') %}
-                            {% set trackers = state_attr(person, 'device_trackers') %}
-                            {% if trackers %}
-                              {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
-                              {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
-                              {% if tracker_name | length > 0 %}
-                                {% set ns.result = ns.result + ['notify.mobile_app_' + tracker_name] %}
-                              {% endif %}
-                            {% endif %}
-                          {% endif %}
-                        {% endfor %}
-                        {% for group in scheduled_notification_groups %}
-                          {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                            {% set ns.result = ns.result + ['notify.' + group] %}
-                          {% endif %}
-                        {% endfor %}
-                        {{ ns.result }}
-                  # Send to all valid recipients
-                  - repeat:
-                      for_each: "{{ scheduled_notify_services }}"
-                      sequence:
-                        - action: "{{ repeat.item }}"
-                          continue_on_error: true
-                          data:
-                            title: !input scheduled_notification_title
-                            message: !input scheduled_notification_message
-                            data:
-                              actions:
-                                - action: "PREPARE_MAP3_MOP"
-                                  title: "{{ prepare_button }}"
-                                - action: "SKIP_CLEANING"
-                                  title: "{{ skip_button }}"
-                              push:
-                                interruption-level: "{{ scheduled_notification_interruption_level }}"
-                                sound: >
-                                  {% if scheduled_notification_critical %}
-                                    {
-                                      "name": "{{ scheduled_notification_sound }}",
-                                      "critical": 1,
-                                      "volume": {{ scheduled_notification_volume }}
-                                    }
-                                  {% else %}
-                                    "{{ scheduled_notification_sound }}"
-                                  {% endif %}
-
-                  - if: "{{ debug_mode }}"
-                    then:
-                      - action: persistent_notification.create
-                        data:
-                          title: "🔔 Notification Sent"
-                          message: "Waiting for preparation: {{ schedule_label }}"
+                      title: "🔔 {{ schedule_label }}"
+                      message: "Notification sent, awaiting preparation"
 
       # ========================================
       # NOTIFICATION ACTION HANDLERS
@@ -3194,113 +2251,99 @@ actions:
       # These handle user responses from notification action buttons
 
       # ========================================
-      # NOTIFICATION ACTION: Prepare Robot - Map 1 Sweep
+      # UNIFIED PREPARE HANDLER (Maps 1-3, Sweep/Mop)
       # ========================================
-      # Preparation workflow for maps without base station (Sweep Only)
-      # 1. Disable customized_cleaning (enables global mode settings)
-      # 2. Save & disable self_clean (for consistency)
-      # 3. Set cleaning mode
-      # 4. [SKIP mop washing - sweep-only mode]
-      # 5. Start segment cleaning
-      # 6. Pause after delay
-      # 7. Switch to target map
-      # 8. Restore settings after map switch
-      - conditions:
-          - condition: template
-            value_template: "{{ trigger.id == 'notification_prepare_map1_sweep' }}"
+      - conditions: "{{ trigger.id.startswith('notification_prepare_map') }}"
         sequence:
+          # Dynamic variable extraction from trigger.id
           - variables:
-              notification_target_mode: "{{ mode_sweeping }}"
-              notification_target_map_name: "{{ map_1_name }}"
-              notification_cleaning_repeats: "{{ map_config.map_1.cleaning_repeats }}"
-              schedule_label: "Map 1 Sweep"
+              _map_num: >
+                {% if 'map1' in trigger.id %}1
+                {% elif 'map2' in trigger.id %}2
+                {% else %}3{% endif %}
+              _is_mop: "{{ 'mop' in trigger.id }}"
+              notification_target_mode: "{{ mode_sweeping_mopping if _is_mop else mode_sweeping }}"
+              notification_target_map_name: "{{ [map_1_name, map_2_name, map_3_name][_map_num - 1] }}"
+              notification_cleaning_repeats: "{{ map_config['map_' ~ _map_num].cleaning_repeats }}"
+              schedule_label: "Map {{ _map_num }} {{ 'Mop' if _is_mop else 'Sweep' }}"
 
-          # Dock check: Abort if robot not docked
+          # Dock check
           - if: "{{ not is_docked }}"
             then:
               - action: persistent_notification.create
                 data:
-                  title: "⚠️ Preparation Failed: {{ schedule_label }}"
-                  message: |
-                    **Robot is not docked!**
-
-                    **Preparation:** {{ schedule_label }}
-                    **Robot State:** {{ states(vacuum_entity) }}
-                    **Current Map:** {{ current_map_name }}
-
-                    Robot must be docked at base station for preparation workflow.
-                    Please dock robot and try again via notification button.
+                  title: "⚠️ {{ schedule_label }} Failed"
+                  message: "Robot not docked! Please dock and retry."
                   notification_id: "prepare_dock_error_{{ vacuum_base_name }}"
               - stop: "Robot not docked, cannot start preparation"
+                error: true
 
-          # Professional debug notification: Workflow started
-          - if: "{{ debug_mode }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚙️ Prepare Map1"
-                  notification_id: "vacuum_prepare_map1_sweep"
-                  message: |
-                    ⏱ {{ now().strftime('%H:%M:%S') }}
-                    **Map:** {{ notification_target_map_name }}
-                    **Mode:** {{ notification_target_mode }}
-                    **Repeats:** {{ notification_cleaning_repeats }}x
+          # Debug: Start
+          - action: persistent_notification.create
+            enabled: "{{ debug_mode }}"
+            data:
+              title: "⚙️ {{ schedule_label }}"
+              notification_id: "vacuum_prepare_{{ _map_num }}_{{ 'mop' if _is_mop else 'sweep' }}"
+              message: |
+                ⏱ {{ now().strftime('%H:%M:%S') }}
+                📍 {{ notification_target_map_name }} | 🧹 {{ notification_target_mode }} | 🔁 {{ notification_cleaning_repeats }}x
+                ⏳ Running workflow...
 
-                    **Workflow**
-                    1. Disable custom_clean
-                    2. Set mode
-                    3. Start cleaning
-                    4. Pause after {{ pause_delay_after_undock }}s
-                    5. Switch map
-                    6. Restore settings
-
-                    ⏳ In Progress...
-
-          # Step 1: Disable customized_cleaning (enables global cleaning_mode_select)
+          # Step 1: Disable customized_cleaning
           - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
+            continue_on_error: true
             target:
               entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
           - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
             timeout: 10
             continue_on_timeout: false
 
-          # Step 1b: Enable cleaning_sequence (if available)
-          - if: "{{ has_cleaning_sequence }}"
+          # Step 1b: Enable cleaning_sequence if available
+          - if: "{{ has_cleaning_sequence and is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
             then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
+              - action: switch.turn_on
+                continue_on_error: true
+                target:
+                  entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
+              - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
+                timeout: 5
+                continue_on_timeout: true
 
-          # Step 2: Save & disable self_clean (for consistency, even though sweep mode doesn't use mops)
+          # Step 2: Save & disable self_clean
           - variables:
               original_self_clean_state: "{{ states('switch.' ~ vacuum_base_name ~ '_self_clean') }}"
           - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
+            continue_on_error: true
             target:
               entity_id: "switch.{{ vacuum_base_name }}_self_clean"
 
           # Step 3: Set cleaning mode
           - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
+            continue_on_error: true
             target:
               entity_id: "{{ cleaning_mode_select }}"
             data:
               option: "{{ notification_target_mode }}"
 
-          # Step 4: [SKIP mop washing - this is sweep-only mode]
+          # Step 4: Mop washing (only for mop mode)
+          - if: "{{ _is_mop }}"
+            then:
+              - action: button.press
+                continue_on_error: true
+                target:
+                  entity_id: "button.{{ vacuum_base_name }}_self_clean"
+              - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') in ['washing', 'clean_add_water'] }}"
+                timeout: 60
+                continue_on_timeout: false
+              - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') not in ['washing', 'clean_add_water'] }}"
+                timeout: 180
+                continue_on_timeout: false
 
           # Step 5: Extract segments & start cleaning
           - variables:
               notification_map_segments: >-
                 {% set map_camera = 'camera.' ~ vacuum_base_name ~ '_map' %}
-                {% if states(map_camera) not in ['unknown', 'unavailable'] %}
+                {% if has_value(map_camera) %}
                   {% if state_attr(map_camera, 'rooms') is not none %}
                     {{ state_attr(map_camera, 'rooms').keys() | map('int') | list }}
                   {% elif state_attr(map_camera, 'segments') is not none %}
@@ -3312,44 +2355,37 @@ actions:
                   []
                 {% endif %}
 
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ use_segment_service }}"
-                  - condition: template
-                    value_template: "{{ notification_map_segments | length > 0 }}"
-                sequence:
-                  - action: dreame_vacuum.vacuum_clean_segment
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-                    data:
-                      segments: "{{ notification_map_segments }}"
-                      repeats: "{{ notification_cleaning_repeats }}"
-            default:
+          - if: "{{ use_segment_service and notification_map_segments | length > 0 }}"
+            then:
+              - action: dreame_vacuum.vacuum_clean_segment
+                continue_on_error: true
+                target:
+                  entity_id: "{{ vacuum_entity }}"
+                data:
+                  segments: "{{ notification_map_segments }}"
+                  repeats: "{{ notification_cleaning_repeats }}"
+            else:
               - action: vacuum.start
-                continue_on_error: true  # Don't abort if vacuum unavailable
+                continue_on_error: true
                 target:
                   entity_id: "{{ vacuum_entity }}"
 
-          # Step 6: Wait for cleaning state, delay, then pause
+          # Step 6: Wait for cleaning state, delay, pause
           - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') in cleaning_states }}"
             timeout: 120
             continue_on_timeout: false
-          # Optional delay before pause (prevents wet floors before base station)
           - if: "{{ pause_delay_after_undock > 0 }}"
             then:
               - delay:
                   seconds: "{{ pause_delay_after_undock }}"
-          # Pause for manual transport
           - action: vacuum.pause
-            continue_on_error: true  # Don't abort if vacuum unavailable
+            continue_on_error: true
             target:
               entity_id: "{{ vacuum_entity }}"
 
           # Step 7: Switch to target map
           - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
+            continue_on_error: true
             target:
               entity_id: "{{ selected_map_select }}"
             data:
@@ -3358,299 +2394,23 @@ actions:
             timeout: 30
             continue_on_timeout: false
 
-          # Step 8: Re-disable customized_cleaning (map switch re-enables it)
+          # Step 8: Re-disable customized_cleaning
           - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
+            continue_on_error: true
             target:
               entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
 
-          # Step 9: Re-set cleaning mode (map switch overwrites it)
+          # Step 9: Re-set cleaning mode
           - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
+            continue_on_error: true
             target:
               entity_id: "{{ cleaning_mode_select }}"
             data:
               option: "{{ notification_target_mode }}"
 
-          # Step 10: Restore self_clean to original state
+          # Step 10: Restore self_clean
           - action: "switch.turn_{{ original_self_clean_state }}"
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_self_clean"
-
-          # Step 11: Send pickup notification with action buttons
-          - if: "{{ pickup_notification_enabled }}"
-            then:
-              # Define template variables for notification
-              - variables:
-                  map_name: "{{ notification_target_map_name }}"
-                  current_map: "{{ states(selected_map_select) }}"
-                  # Collect valid notification recipients
-                  pickup_notify_services: >
-                    {% set result = [] %}
-                    {% for person in pickup_notification_persons %}
-                      {% if is_state(person, 'home') %}
-                        {% set trackers = state_attr(person, 'device_trackers') %}
-                        {% if trackers %}
-                          {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
-                          {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
-                          {% if tracker_name | length > 0 %}
-                            {% set result = result + ['notify.mobile_app_' + tracker_name] %}
-                          {% endif %}
-                        {% endif %}
-                      {% endif %}
-                    {% endfor %}
-                    {% for group in pickup_notification_groups %}
-                      {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                        {% set result = result + ['notify.' + group] %}
-                      {% endif %}
-                    {% endfor %}
-                    {{ result }}
-              # Send to all valid recipients
-              - repeat:
-                  for_each: "{{ pickup_notify_services }}"
-                  sequence:
-                    - action: "{{ repeat.item }}"
-                      continue_on_error: true
-                      data:
-                        title: !input pickup_notification_title
-                        message: !input pickup_notification_message
-                        data:
-                          actions:
-                            - action: "START_CLEANING"
-                              title: "{{ start_cleaning_button }}"
-                            - action: "CANCEL_CLEANING"
-                              title: "{{ cancel_cleaning_button }}"
-                          push:
-                            interruption-level: "{{ pickup_notification_interruption_level }}"
-                            sound: >
-                              {% if pickup_notification_critical %}
-                                {
-                                  "name": "{{ pickup_notification_sound }}",
-                                  "critical": 1,
-                                  "volume": {{ pickup_notification_volume }}
-                                }
-                              {% else %}
-                                "{{ pickup_notification_sound }}"
-                              {% endif %}
-
-          # Debug: Completion notification
-          - if: "{{ debug_mode }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "✅ Complete Map1"
-                  notification_id: "vacuum_prepare_map1_sweep"
-                  message: |
-                    ⏱ {{ now().strftime('%H:%M:%S') }}
-                    **Map:** {{ notification_target_map_name }}
-                    **Mode:** {{ notification_target_mode }}
-                    **Status:** Paused & Ready 🎯
-
-                    🚚 Transport to target map and resume
-
-      # ========================================
-      # NOTIFICATION ACTION: Prepare Robot - Map 1 Mop
-      # ========================================
-      # Preparation workflow for maps without base station (Sweep & Mop)
-      # 1. Disable customized_cleaning (enables global mode settings)
-      # 2. Save & disable self_clean (prevents auto-return during cleaning)
-      # 3. Set cleaning mode
-      # 4. Manual mop washing with button press
-      # 5. Start segment cleaning
-      # 6. Pause after delay
-      # 7. Switch to target map
-      # 8. Restore settings after map switch
-      - conditions:
-          - condition: template
-            value_template: "{{ trigger.id == 'notification_prepare_map1_mop' }}"
-        sequence:
-          - variables:
-              notification_target_mode: "{{ mode_sweeping_mopping }}"
-              notification_target_map_name: "{{ map_1_name }}"
-              notification_cleaning_repeats: "{{ map_config.map_1.cleaning_repeats }}"
-              schedule_label: "Map 1 Mop"
-
-          # Dock check: Abort if robot not docked
-          - if: "{{ not is_docked }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚠️ Preparation Failed: {{ schedule_label }}"
-                  message: |
-                    **Robot is not docked!**
-
-                    **Preparation:** {{ schedule_label }}
-                    **Robot State:** {{ states(vacuum_entity) }}
-                    **Current Map:** {{ current_map_name }}
-
-                    Robot must be docked at base station for preparation workflow.
-                    Please dock robot and try again via notification button.
-                  notification_id: "prepare_dock_error_{{ vacuum_base_name }}"
-              - stop: "Robot not docked, cannot start preparation"
-
-          - if: "{{ debug_mode }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚙️ Prepare Map1"
-                  notification_id: "vacuum_prepare_map1_mop"
-                  message: |
-                    ⏱ {{ now().strftime('%H:%M:%S') }}
-                    **Map:** {{ notification_target_map_name }}
-                    **Mode:** {{ notification_target_mode }}
-                    **Repeats:** {{ notification_cleaning_repeats }}x
-
-                    **Workflow**
-                    1. Disable custom_clean
-                    2. Set mode
-                    3. Mop washing (~3min)
-                    4. Start cleaning
-                    5. Pause after {{ pause_delay_after_undock }}s
-                    6. Switch map
-                    7. Restore settings
-
-                    ⏳ In Progress...
-
-          # Step 1: Disable customized_cleaning (enables global cleaning_mode_select)
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-          - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-            timeout: 10
-            continue_on_timeout: false
-
-          # Step 2: Save & disable self_clean (prevents auto-return during cleaning)
-          - variables:
-              original_self_clean_state: "{{ states('switch.' ~ vacuum_base_name ~ '_self_clean') }}"
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_self_clean"
-
-          # Step 3: Set cleaning mode
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
-            data:
-              option: "{{ notification_target_mode }}"
-
-          # Step 4: Manual mop washing (controlled preparation)
-          - action: button.press
-            continue_on_error: true  # Don't abort if button unavailable
-            target:
-              entity_id: "button.{{ vacuum_base_name }}_self_clean"
-          - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') in ['washing', 'clean_add_water'] }}"
-            timeout: 60
-            continue_on_timeout: false
-          - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') not in ['washing', 'clean_add_water'] }}"
-            timeout: 180
-            continue_on_timeout: false
-
-          # Step 4b: Enable customized cleaning + sequence (after washing, before start)
-          - if: "{{ has_customized_cleaning }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          - if: "{{ has_cleaning_sequence }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          # Step 5: Extract segments & start cleaning
-          - variables:
-              notification_map_segments: >-
-                {% set map_camera = 'camera.' ~ vacuum_base_name ~ '_map' %}
-                {% if states(map_camera) not in ['unknown', 'unavailable'] %}
-                  {% if state_attr(map_camera, 'rooms') is not none %}
-                    {{ state_attr(map_camera, 'rooms').keys() | map('int') | list }}
-                  {% elif state_attr(map_camera, 'segments') is not none %}
-                    {{ state_attr(map_camera, 'segments').keys() | map('int') | list }}
-                  {% else %}
-                    []
-                  {% endif %}
-                {% else %}
-                  []
-                {% endif %}
-
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ use_segment_service }}"
-                  - condition: template
-                    value_template: "{{ notification_map_segments | length > 0 }}"
-                sequence:
-                  - action: dreame_vacuum.vacuum_clean_segment
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-                    data:
-                      segments: "{{ notification_map_segments }}"
-                      repeats: "{{ notification_cleaning_repeats }}"
-            default:
-              - action: vacuum.start
-                continue_on_error: true  # Don't abort if vacuum unavailable
-                target:
-                  entity_id: "{{ vacuum_entity }}"
-
-          # Step 6: Wait for cleaning state, delay, then pause
-          - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') in cleaning_states }}"
-            timeout: 120
-            continue_on_timeout: false
-          # Optional delay before pause (prevents wet floors before base station)
-          - if: "{{ pause_delay_after_undock > 0 }}"
-            then:
-              - delay:
-                  seconds: "{{ pause_delay_after_undock }}"
-          # Pause for manual transport
-          - action: vacuum.pause
-            continue_on_error: true  # Don't abort if vacuum unavailable
-            target:
-              entity_id: "{{ vacuum_entity }}"
-
-          # Step 7: Switch to target map
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ selected_map_select }}"
-            data:
-              option: "{{ notification_target_map_name }}"
-          - wait_template: "{{ states(selected_map_select) == notification_target_map_name }}"
-            timeout: 30
-            continue_on_timeout: false
-
-          # Step 8: Re-disable customized_cleaning (map switch re-enables it)
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-
-          # Step 9: Re-set cleaning mode (map switch overwrites it)
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
-            data:
-              option: "{{ notification_target_mode }}"
-
-          # Step 10: Restore self_clean to original state
-          - action: "switch.turn_{{ original_self_clean_state }}"
+            continue_on_error: true
             target:
               entity_id: "switch.{{ vacuum_base_name }}_self_clean"
 
@@ -3660,7 +2420,6 @@ actions:
               - variables:
                   map_name: "{{ notification_target_map_name }}"
                   current_map: "{{ states(selected_map_select) }}"
-                  # Collect valid notification recipients
                   pickup_notify_services: >
                     {% set result = [] %}
                     {% for person in pickup_notification_persons %}
@@ -3681,7 +2440,6 @@ actions:
                       {% endif %}
                     {% endfor %}
                     {{ result }}
-              # Send to all valid recipients
               - repeat:
                   for_each: "{{ pickup_notify_services }}"
                   sequence:
@@ -3709,1086 +2467,16 @@ actions:
                                 "{{ pickup_notification_sound }}"
                               {% endif %}
 
-          # Debug: Completion notification
-          - if: "{{ debug_mode }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "✅ Complete Map1"
-                  notification_id: "vacuum_prepare_map1_mop"
-                  message: |
-                    ⏱ {{ now().strftime('%H:%M:%S') }}
-                    **Map:** {{ notification_target_map_name }}
-                    **Mode:** {{ notification_target_mode }}
-                    **Status:** Paused & Ready 🎯
-
-                    🚚 Transport to target map and resume
-
-      # ========================================
-      # NOTIFICATION ACTION: Prepare Robot - Map 2 Sweep
-      # ========================================
-      # Preparation workflow for maps without base station (Sweep Only)
-      # 1. Disable customized_cleaning (enables global mode settings)
-      # 2. Save & disable self_clean (for consistency)
-      # 3. Set cleaning mode
-      # 4. [SKIP mop washing - sweep-only mode]
-      # 5. Start segment cleaning
-      # 6. Pause after delay
-      # 7. Switch to target map
-      # 8. Restore settings after map switch
-      - conditions:
-          - condition: template
-            value_template: "{{ trigger.id == 'notification_prepare_map2_sweep' }}"
-        sequence:
-          - variables:
-              notification_target_mode: "{{ mode_sweeping }}"
-              notification_target_map_name: "{{ map_2_name }}"
-              notification_cleaning_repeats: "{{ map_config.map_2.cleaning_repeats }}"
-              schedule_label: "Map 2 Sweep"
-
-          # Dock check: Abort if robot not docked
-          - if: "{{ not is_docked }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚠️ Preparation Failed: {{ schedule_label }}"
-                  message: |
-                    **Robot is not docked!**
-
-                    **Preparation:** {{ schedule_label }}
-                    **Robot State:** {{ states(vacuum_entity) }}
-                    **Current Map:** {{ current_map_name }}
-
-                    Robot must be docked at base station for preparation workflow.
-                    Please dock robot and try again via notification button.
-                  notification_id: "prepare_dock_error_{{ vacuum_base_name }}"
-              - stop: "Robot not docked, cannot start preparation"
-
-          # Professional debug notification: Workflow started
-          - if: "{{ debug_mode }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚙️ Prepare Map2"
-                  notification_id: "vacuum_prepare_map2_sweep"
-                  message: |
-                    ⏱ {{ now().strftime('%H:%M:%S') }}
-                    **Map:** {{ notification_target_map_name }}
-                    **Mode:** {{ notification_target_mode }}
-                    **Repeats:** {{ notification_cleaning_repeats }}x
-
-                    **Workflow**
-                    1. Disable custom_clean
-                    2. Set mode
-                    3. Start cleaning
-                    4. Pause after {{ pause_delay_after_undock }}s
-                    5. Switch map
-                    6. Restore settings
-
-                    ⏳ In Progress...
-
-          # Step 1: Disable customized_cleaning (enables global cleaning_mode_select)
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-          - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-            timeout: 10
-            continue_on_timeout: false
-
-          # Step 1b: Enable cleaning_sequence (if available)
-          - if: "{{ has_cleaning_sequence }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          # Step 2: Save & disable self_clean (for consistency, even though sweep mode doesn't use mops)
-          - variables:
-              original_self_clean_state: "{{ states('switch.' ~ vacuum_base_name ~ '_self_clean') }}"
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_self_clean"
-
-          # Step 3: Set cleaning mode
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
+          # Debug: Complete
+          - action: persistent_notification.create
+            enabled: "{{ debug_mode }}"
             data:
-              option: "{{ notification_target_mode }}"
-
-          # Step 4: [SKIP mop washing - this is sweep-only mode]
-
-          # Step 5: Extract segments & start cleaning
-          - variables:
-              notification_map_segments: >-
-                {% set map_camera = 'camera.' ~ vacuum_base_name ~ '_map' %}
-                {% if states(map_camera) not in ['unknown', 'unavailable'] %}
-                  {% if state_attr(map_camera, 'rooms') is not none %}
-                    {{ state_attr(map_camera, 'rooms').keys() | map('int') | list }}
-                  {% elif state_attr(map_camera, 'segments') is not none %}
-                    {{ state_attr(map_camera, 'segments').keys() | map('int') | list }}
-                  {% else %}
-                    []
-                  {% endif %}
-                {% else %}
-                  []
-                {% endif %}
-
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ use_segment_service }}"
-                  - condition: template
-                    value_template: "{{ notification_map_segments | length > 0 }}"
-                sequence:
-                  - action: dreame_vacuum.vacuum_clean_segment
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-                    data:
-                      segments: "{{ notification_map_segments }}"
-                      repeats: "{{ notification_cleaning_repeats }}"
-            default:
-              - action: vacuum.start
-                continue_on_error: true  # Don't abort if vacuum unavailable
-                target:
-                  entity_id: "{{ vacuum_entity }}"
-
-          # Step 6: Wait for cleaning state, delay, then pause
-          - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') in cleaning_states }}"
-            timeout: 120
-            continue_on_timeout: false
-          # Optional delay before pause (prevents wet floors before base station)
-          - if: "{{ pause_delay_after_undock > 0 }}"
-            then:
-              - delay:
-                  seconds: "{{ pause_delay_after_undock }}"
-          # Pause for manual transport
-          - action: vacuum.pause
-            continue_on_error: true  # Don't abort if vacuum unavailable
-            target:
-              entity_id: "{{ vacuum_entity }}"
-
-          # Step 7: Switch to target map
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ selected_map_select }}"
-            data:
-              option: "{{ notification_target_map_name }}"
-          - wait_template: "{{ states(selected_map_select) == notification_target_map_name }}"
-            timeout: 30
-            continue_on_timeout: false
-
-          # Step 8: Re-disable customized_cleaning (map switch re-enables it)
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-
-          # Step 9: Re-set cleaning mode (map switch overwrites it)
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
-            data:
-              option: "{{ notification_target_mode }}"
-
-          # Step 10: Restore self_clean to original state
-          - action: "switch.turn_{{ original_self_clean_state }}"
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_self_clean"
-
-          # Step 11: Send pickup notification with action buttons
-          - if: "{{ pickup_notification_enabled }}"
-            then:
-              # Define template variables for notification
-              - variables:
-                  map_name: "{{ notification_target_map_name }}"
-                  current_map: "{{ states(selected_map_select) }}"
-                  # Collect valid notification recipients
-                  pickup_notify_services: >
-                    {% set result = [] %}
-                    {% for person in pickup_notification_persons %}
-                      {% if is_state(person, 'home') %}
-                        {% set trackers = state_attr(person, 'device_trackers') %}
-                        {% if trackers %}
-                          {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
-                          {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
-                          {% if tracker_name | length > 0 %}
-                            {% set result = result + ['notify.mobile_app_' + tracker_name] %}
-                          {% endif %}
-                        {% endif %}
-                      {% endif %}
-                    {% endfor %}
-                    {% for group in pickup_notification_groups %}
-                      {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                        {% set result = result + ['notify.' + group] %}
-                      {% endif %}
-                    {% endfor %}
-                    {{ result }}
-              # Send to all valid recipients
-              - repeat:
-                  for_each: "{{ pickup_notify_services }}"
-                  sequence:
-                    - action: "{{ repeat.item }}"
-                      continue_on_error: true
-                      data:
-                        title: !input pickup_notification_title
-                        message: !input pickup_notification_message
-                        data:
-                          actions:
-                            - action: "START_CLEANING"
-                              title: "{{ start_cleaning_button }}"
-                            - action: "CANCEL_CLEANING"
-                              title: "{{ cancel_cleaning_button }}"
-                          push:
-                            interruption-level: "{{ pickup_notification_interruption_level }}"
-                            sound: >
-                              {% if pickup_notification_critical %}
-                                {
-                                  "name": "{{ pickup_notification_sound }}",
-                                  "critical": 1,
-                                  "volume": {{ pickup_notification_volume }}
-                                }
-                              {% else %}
-                                "{{ pickup_notification_sound }}"
-                              {% endif %}
-
-          # Debug: Completion notification
-          - if: "{{ debug_mode }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "✅ Complete Map2"
-                  notification_id: "vacuum_prepare_map2_sweep"
-                  message: |
-                    ⏱ {{ now().strftime('%H:%M:%S') }}
-                    **Map:** {{ notification_target_map_name }}
-                    **Mode:** {{ notification_target_mode }}
-                    **Status:** Paused & Ready 🎯
-
-                    🚚 Transport to target map and resume
-
-      # ========================================
-      # NOTIFICATION ACTION: Prepare Robot - Map 2 Mop
-      # ========================================
-      # Preparation workflow for maps without base station (Sweep & Mop)
-      # 1. Disable customized_cleaning (enables global mode settings)
-      # 2. Save & disable self_clean (prevents auto-return during cleaning)
-      # 3. Set cleaning mode
-      # 4. Manual mop washing with button press
-      # 5. Start segment cleaning
-      # 6. Pause after delay
-      # 7. Switch to target map
-      # 8. Restore settings after map switch
-      - conditions:
-          - condition: template
-            value_template: "{{ trigger.id == 'notification_prepare_map2_mop' }}"
-        sequence:
-          - variables:
-              notification_target_mode: "{{ mode_sweeping_mopping }}"
-              notification_target_map_name: "{{ map_2_name }}"
-              notification_cleaning_repeats: "{{ map_config.map_2.cleaning_repeats }}"
-              schedule_label: "Map 2 Mop"
-
-          # Dock check: Abort if robot not docked
-          - if: "{{ not is_docked }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚠️ Preparation Failed: {{ schedule_label }}"
-                  message: |
-                    **Robot is not docked!**
-
-                    **Preparation:** {{ schedule_label }}
-                    **Robot State:** {{ states(vacuum_entity) }}
-                    **Current Map:** {{ current_map_name }}
-
-                    Robot must be docked at base station for preparation workflow.
-                    Please dock robot and try again via notification button.
-                  notification_id: "prepare_dock_error_{{ vacuum_base_name }}"
-              - stop: "Robot not docked, cannot start preparation"
-
-          # Professional debug notification: Workflow started
-          - if: "{{ debug_mode }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚙️ Prepare Map2"
-                  notification_id: "vacuum_prepare_map2_mop"
-                  message: |
-                    ⏱ {{ now().strftime('%H:%M:%S') }}
-                    **Map:** {{ notification_target_map_name }}
-                    **Mode:** {{ notification_target_mode }}
-                    **Repeats:** {{ notification_cleaning_repeats }}x
-
-                    **Workflow**
-                    1. Disable custom_clean
-                    2. Set mode
-                    3. Mop washing (~3min)
-                    4. Start cleaning
-                    5. Pause after {{ pause_delay_after_undock }}s
-                    6. Switch map
-                    7. Restore settings
-
-                    ⏳ In Progress...
-
-          # Step 1: Disable customized_cleaning (enables global cleaning_mode_select)
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-          - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-            timeout: 10
-            continue_on_timeout: false
-
-          # Step 2: Save & disable self_clean (prevents auto-return during cleaning)
-          - variables:
-              original_self_clean_state: "{{ states('switch.' ~ vacuum_base_name ~ '_self_clean') }}"
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_self_clean"
-
-          # Step 3: Set cleaning mode
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
-            data:
-              option: "{{ notification_target_mode }}"
-
-          # Step 4: Manual mop washing (controlled preparation)
-          - action: button.press
-            continue_on_error: true  # Don't abort if button unavailable
-            target:
-              entity_id: "button.{{ vacuum_base_name }}_self_clean"
-          - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') in ['washing', 'clean_add_water'] }}"
-            timeout: 60
-            continue_on_timeout: false
-          - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') not in ['washing', 'clean_add_water'] }}"
-            timeout: 180
-            continue_on_timeout: false
-
-          # Step 4b: Enable customized cleaning + sequence (after washing, before start)
-          - if: "{{ has_customized_cleaning }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          - if: "{{ has_cleaning_sequence }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          # Step 5: Extract segments & start cleaning
-          - variables:
-              notification_map_segments: >-
-                {% set map_camera = 'camera.' ~ vacuum_base_name ~ '_map' %}
-                {% if states(map_camera) not in ['unknown', 'unavailable'] %}
-                  {% if state_attr(map_camera, 'rooms') is not none %}
-                    {{ state_attr(map_camera, 'rooms').keys() | map('int') | list }}
-                  {% elif state_attr(map_camera, 'segments') is not none %}
-                    {{ state_attr(map_camera, 'segments').keys() | map('int') | list }}
-                  {% else %}
-                    []
-                  {% endif %}
-                {% else %}
-                  []
-                {% endif %}
-
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ use_segment_service }}"
-                  - condition: template
-                    value_template: "{{ notification_map_segments | length > 0 }}"
-                sequence:
-                  - action: dreame_vacuum.vacuum_clean_segment
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-                    data:
-                      segments: "{{ notification_map_segments }}"
-                      repeats: "{{ notification_cleaning_repeats }}"
-            default:
-              - action: vacuum.start
-                continue_on_error: true  # Don't abort if vacuum unavailable
-                target:
-                  entity_id: "{{ vacuum_entity }}"
-
-          # Step 6: Wait for cleaning state, delay, then pause
-          - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') in cleaning_states }}"
-            timeout: 120
-            continue_on_timeout: false
-          # Optional delay before pause (prevents wet floors before base station)
-          - if: "{{ pause_delay_after_undock > 0 }}"
-            then:
-              - delay:
-                  seconds: "{{ pause_delay_after_undock }}"
-          # Pause for manual transport
-          - action: vacuum.pause
-            continue_on_error: true  # Don't abort if vacuum unavailable
-            target:
-              entity_id: "{{ vacuum_entity }}"
-
-          # Step 7: Switch to target map
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ selected_map_select }}"
-            data:
-              option: "{{ notification_target_map_name }}"
-          - wait_template: "{{ states(selected_map_select) == notification_target_map_name }}"
-            timeout: 30
-            continue_on_timeout: false
-
-          # Step 8: Re-disable customized_cleaning (map switch re-enables it)
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-
-          # Step 9: Re-set cleaning mode (map switch overwrites it)
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
-            data:
-              option: "{{ notification_target_mode }}"
-
-          # Step 10: Restore self_clean to original state
-          - action: "switch.turn_{{ original_self_clean_state }}"
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_self_clean"
-
-          # Step 11: Send pickup notification with action buttons
-          - if: "{{ pickup_notification_enabled }}"
-            then:
-              # Define template variables for notification
-              - variables:
-                  map_name: "{{ notification_target_map_name }}"
-                  current_map: "{{ states(selected_map_select) }}"
-                  # Collect valid notification recipients
-                  pickup_notify_services: >
-                    {% set result = [] %}
-                    {% for person in pickup_notification_persons %}
-                      {% if is_state(person, 'home') %}
-                        {% set trackers = state_attr(person, 'device_trackers') %}
-                        {% if trackers %}
-                          {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
-                          {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
-                          {% if tracker_name | length > 0 %}
-                            {% set result = result + ['notify.mobile_app_' + tracker_name] %}
-                          {% endif %}
-                        {% endif %}
-                      {% endif %}
-                    {% endfor %}
-                    {% for group in pickup_notification_groups %}
-                      {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                        {% set result = result + ['notify.' + group] %}
-                      {% endif %}
-                    {% endfor %}
-                    {{ result }}
-              # Send to all valid recipients
-              - repeat:
-                  for_each: "{{ pickup_notify_services }}"
-                  sequence:
-                    - action: "{{ repeat.item }}"
-                      continue_on_error: true
-                      data:
-                        title: !input pickup_notification_title
-                        message: !input pickup_notification_message
-                        data:
-                          actions:
-                            - action: "START_CLEANING"
-                              title: "{{ start_cleaning_button }}"
-                            - action: "CANCEL_CLEANING"
-                              title: "{{ cancel_cleaning_button }}"
-                          push:
-                            interruption-level: "{{ pickup_notification_interruption_level }}"
-                            sound: >
-                              {% if pickup_notification_critical %}
-                                {
-                                  "name": "{{ pickup_notification_sound }}",
-                                  "critical": 1,
-                                  "volume": {{ pickup_notification_volume }}
-                                }
-                              {% else %}
-                                "{{ pickup_notification_sound }}"
-                              {% endif %}
-
-          # Debug: Completion notification
-          - if: "{{ debug_mode }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "✅ Complete Map2"
-                  notification_id: "vacuum_prepare_map2_mop"
-                  message: |
-                    ⏱ {{ now().strftime('%H:%M:%S') }}
-                    **Map:** {{ notification_target_map_name }}
-                    **Mode:** {{ notification_target_mode }}
-                    **Status:** Paused & Ready 🎯
-
-                    🚚 Transport to target map and resume
-
-      # ========================================
-      # NOTIFICATION ACTION: Prepare Robot - Map 3 Sweep
-      # ========================================
-      # Preparation workflow for maps without base station (Sweep Only)
-      # 1. Disable customized_cleaning (enables global mode settings)
-      # 2. Save & disable self_clean (for consistency)
-      # 3. Set cleaning mode
-      # 4. [SKIP mop washing - sweep-only mode]
-      # 5. Start segment cleaning
-      # 6. Pause after delay
-      # 7. Switch to target map
-      # 8. Restore settings after map switch
-      - conditions:
-          - condition: template
-            value_template: "{{ trigger.id == 'notification_prepare_map3_sweep' }}"
-        sequence:
-          - variables:
-              notification_target_mode: "{{ mode_sweeping }}"
-              notification_target_map_name: "{{ map_3_name }}"
-              notification_cleaning_repeats: "{{ map_config.map_3.cleaning_repeats }}"
-              schedule_label: "Map 3 Sweep"
-
-          # Dock check: Abort if robot not docked
-          - if: "{{ not is_docked }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚠️ Preparation Failed: {{ schedule_label }}"
-                  message: |
-                    **Robot is not docked!**
-
-                    **Preparation:** {{ schedule_label }}
-                    **Robot State:** {{ states(vacuum_entity) }}
-                    **Current Map:** {{ current_map_name }}
-
-                    Robot must be docked at base station for preparation workflow.
-                    Please dock robot and try again via notification button.
-                  notification_id: "prepare_dock_error_{{ vacuum_base_name }}"
-              - stop: "Robot not docked, cannot start preparation"
-
-          # Professional debug notification: Workflow started
-          - if: "{{ debug_mode }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚙️ Prepare Map3"
-                  notification_id: "vacuum_prepare_map3_sweep"
-                  message: |
-                    ⏱ {{ now().strftime('%H:%M:%S') }}
-                    **Map:** {{ notification_target_map_name }}
-                    **Mode:** {{ notification_target_mode }}
-                    **Repeats:** {{ notification_cleaning_repeats }}x
-
-                    **Workflow**
-                    1. Disable custom_clean
-                    2. Set mode
-                    3. Start cleaning
-                    4. Pause after {{ pause_delay_after_undock }}s
-                    5. Switch map
-                    6. Restore settings
-
-                    ⏳ In Progress...
-
-          # Step 1: Disable customized_cleaning (enables global cleaning_mode_select)
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-          - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-            timeout: 10
-            continue_on_timeout: false
-
-          # Step 1b: Enable cleaning_sequence (if available)
-          - if: "{{ has_cleaning_sequence }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          # Step 2: Save & disable self_clean (for consistency, even though sweep mode doesn't use mops)
-          - variables:
-              original_self_clean_state: "{{ states('switch.' ~ vacuum_base_name ~ '_self_clean') }}"
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_self_clean"
-
-          # Step 3: Set cleaning mode
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
-            data:
-              option: "{{ notification_target_mode }}"
-
-          # Step 4: [SKIP mop washing - this is sweep-only mode]
-
-          # Step 5: Extract segments & start cleaning
-          - variables:
-              notification_map_segments: >-
-                {% set map_camera = 'camera.' ~ vacuum_base_name ~ '_map' %}
-                {% if states(map_camera) not in ['unknown', 'unavailable'] %}
-                  {% if state_attr(map_camera, 'rooms') is not none %}
-                    {{ state_attr(map_camera, 'rooms').keys() | map('int') | list }}
-                  {% elif state_attr(map_camera, 'segments') is not none %}
-                    {{ state_attr(map_camera, 'segments').keys() | map('int') | list }}
-                  {% else %}
-                    []
-                  {% endif %}
-                {% else %}
-                  []
-                {% endif %}
-
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ use_segment_service }}"
-                  - condition: template
-                    value_template: "{{ notification_map_segments | length > 0 }}"
-                sequence:
-                  - action: dreame_vacuum.vacuum_clean_segment
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-                    data:
-                      segments: "{{ notification_map_segments }}"
-                      repeats: "{{ notification_cleaning_repeats }}"
-            default:
-              - action: vacuum.start
-                continue_on_error: true  # Don't abort if vacuum unavailable
-                target:
-                  entity_id: "{{ vacuum_entity }}"
-
-          # Step 6: Wait for cleaning state, delay, then pause
-          - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') in cleaning_states }}"
-            timeout: 120
-            continue_on_timeout: false
-          # Optional delay before pause (prevents wet floors before base station)
-          - if: "{{ pause_delay_after_undock > 0 }}"
-            then:
-              - delay:
-                  seconds: "{{ pause_delay_after_undock }}"
-          # Pause for manual transport
-          - action: vacuum.pause
-            continue_on_error: true  # Don't abort if vacuum unavailable
-            target:
-              entity_id: "{{ vacuum_entity }}"
-
-          # Step 7: Switch to target map
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ selected_map_select }}"
-            data:
-              option: "{{ notification_target_map_name }}"
-          - wait_template: "{{ states(selected_map_select) == notification_target_map_name }}"
-            timeout: 30
-            continue_on_timeout: false
-
-          # Step 8: Re-disable customized_cleaning (map switch re-enables it)
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-
-          # Step 9: Re-set cleaning mode (map switch overwrites it)
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
-            data:
-              option: "{{ notification_target_mode }}"
-
-          # Step 10: Restore self_clean to original state
-          - action: "switch.turn_{{ original_self_clean_state }}"
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_self_clean"
-
-          # Step 11: Send pickup notification with action buttons
-          - if: "{{ pickup_notification_enabled }}"
-            then:
-              # Define template variables for notification
-              - variables:
-                  map_name: "{{ notification_target_map_name }}"
-                  current_map: "{{ states(selected_map_select) }}"
-                  # Collect valid notification recipients
-                  pickup_notify_services: >
-                    {% set result = [] %}
-                    {% for person in pickup_notification_persons %}
-                      {% if is_state(person, 'home') %}
-                        {% set trackers = state_attr(person, 'device_trackers') %}
-                        {% if trackers %}
-                          {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
-                          {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
-                          {% if tracker_name | length > 0 %}
-                            {% set result = result + ['notify.mobile_app_' + tracker_name] %}
-                          {% endif %}
-                        {% endif %}
-                      {% endif %}
-                    {% endfor %}
-                    {% for group in pickup_notification_groups %}
-                      {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                        {% set result = result + ['notify.' + group] %}
-                      {% endif %}
-                    {% endfor %}
-                    {{ result }}
-              # Send to all valid recipients
-              - repeat:
-                  for_each: "{{ pickup_notify_services }}"
-                  sequence:
-                    - action: "{{ repeat.item }}"
-                      continue_on_error: true
-                      data:
-                        title: !input pickup_notification_title
-                        message: !input pickup_notification_message
-                        data:
-                          actions:
-                            - action: "START_CLEANING"
-                              title: "{{ start_cleaning_button }}"
-                            - action: "CANCEL_CLEANING"
-                              title: "{{ cancel_cleaning_button }}"
-                          push:
-                            interruption-level: "{{ pickup_notification_interruption_level }}"
-                            sound: >
-                              {% if pickup_notification_critical %}
-                                {
-                                  "name": "{{ pickup_notification_sound }}",
-                                  "critical": 1,
-                                  "volume": {{ pickup_notification_volume }}
-                                }
-                              {% else %}
-                                "{{ pickup_notification_sound }}"
-                              {% endif %}
-
-          # Debug: Completion notification
-          - if: "{{ debug_mode }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "✅ Complete Map3"
-                  notification_id: "vacuum_prepare_map3_sweep"
-                  message: |
-                    ⏱ {{ now().strftime('%H:%M:%S') }}
-                    **Map:** {{ notification_target_map_name }}
-                    **Mode:** {{ notification_target_mode }}
-                    **Status:** Paused & Ready 🎯
-
-                    🚚 Transport to target map and resume
-
-      # ========================================
-      # NOTIFICATION ACTION: Prepare Robot - Map 3 Mop
-      # ========================================
-      # Preparation workflow for maps without base station (Sweep & Mop)
-      # 1. Disable customized_cleaning (enables global mode settings)
-      # 2. Save & disable self_clean (prevents auto-return during cleaning)
-      # 3. Set cleaning mode
-      # 4. Manual mop washing with button press
-      # 5. Start segment cleaning
-      # 6. Pause after delay
-      # 7. Switch to target map
-      # 8. Restore settings after map switch
-      - conditions:
-          - condition: template
-            value_template: "{{ trigger.id == 'notification_prepare_map3_mop' }}"
-        sequence:
-          - variables:
-              notification_target_mode: "{{ mode_sweeping_mopping }}"
-              notification_target_map_name: "{{ map_3_name }}"
-              notification_cleaning_repeats: "{{ map_config.map_3.cleaning_repeats }}"
-              schedule_label: "Map 3 Mop"
-
-          # Dock check: Abort if robot not docked
-          - if: "{{ not is_docked }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚠️ Preparation Failed: {{ schedule_label }}"
-                  message: |
-                    **Robot is not docked!**
-
-                    **Preparation:** {{ schedule_label }}
-                    **Robot State:** {{ states(vacuum_entity) }}
-                    **Current Map:** {{ current_map_name }}
-
-                    Robot must be docked at base station for preparation workflow.
-                    Please dock robot and try again via notification button.
-                  notification_id: "prepare_dock_error_{{ vacuum_base_name }}"
-              - stop: "Robot not docked, cannot start preparation"
-
-          # Professional debug notification: Workflow started
-          - if: "{{ debug_mode }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "⚙️ Prepare Map3"
-                  notification_id: "vacuum_prepare_map3_mop"
-                  message: |
-                    ⏱ {{ now().strftime('%H:%M:%S') }}
-                    **Map:** {{ notification_target_map_name }}
-                    **Mode:** {{ notification_target_mode }}
-                    **Repeats:** {{ notification_cleaning_repeats }}x
-
-                    **Workflow**
-                    1. Disable custom_clean
-                    2. Set mode
-                    3. Mop washing (~3min)
-                    4. Start cleaning
-                    5. Pause after {{ pause_delay_after_undock }}s
-                    6. Switch map
-                    7. Restore settings
-
-                    ⏳ In Progress...
-
-          # Step 1: Disable customized_cleaning (enables global cleaning_mode_select)
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-          - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-            timeout: 10
-            continue_on_timeout: false
-
-          # Step 2: Save & disable self_clean (prevents auto-return during cleaning)
-          - variables:
-              original_self_clean_state: "{{ states('switch.' ~ vacuum_base_name ~ '_self_clean') }}"
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_self_clean"
-
-          # Step 3: Set cleaning mode
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
-            data:
-              option: "{{ notification_target_mode }}"
-
-          # Step 4: Manual mop washing (controlled preparation)
-          - action: button.press
-            continue_on_error: true  # Don't abort if button unavailable
-            target:
-              entity_id: "button.{{ vacuum_base_name }}_self_clean"
-          - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') in ['washing', 'clean_add_water'] }}"
-            timeout: 60
-            continue_on_timeout: false
-          - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') not in ['washing', 'clean_add_water'] }}"
-            timeout: 180
-            continue_on_timeout: false
-
-          # Step 4b: Enable customized cleaning + sequence (after washing, before start)
-          - if: "{{ has_customized_cleaning }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          - if: "{{ has_cleaning_sequence }}"
-            then:
-              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-                then:
-                  - action: switch.turn_on
-                    continue_on_error: true  # Don't abort if switch unavailable
-                    target:
-                      entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                    timeout: 5
-                    continue_on_timeout: false
-
-          # Step 5: Extract segments & start cleaning
-          - variables:
-              notification_map_segments: >-
-                {% set map_camera = 'camera.' ~ vacuum_base_name ~ '_map' %}
-                {% if states(map_camera) not in ['unknown', 'unavailable'] %}
-                  {% if state_attr(map_camera, 'rooms') is not none %}
-                    {{ state_attr(map_camera, 'rooms').keys() | map('int') | list }}
-                  {% elif state_attr(map_camera, 'segments') is not none %}
-                    {{ state_attr(map_camera, 'segments').keys() | map('int') | list }}
-                  {% else %}
-                    []
-                  {% endif %}
-                {% else %}
-                  []
-                {% endif %}
-
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ use_segment_service }}"
-                  - condition: template
-                    value_template: "{{ notification_map_segments | length > 0 }}"
-                sequence:
-                  - action: dreame_vacuum.vacuum_clean_segment
-                    continue_on_error: true  # Don't abort if vacuum unavailable
-                    target:
-                      entity_id: "{{ vacuum_entity }}"
-                    data:
-                      segments: "{{ notification_map_segments }}"
-                      repeats: "{{ notification_cleaning_repeats }}"
-            default:
-              - action: vacuum.start
-                continue_on_error: true  # Don't abort if vacuum unavailable
-                target:
-                  entity_id: "{{ vacuum_entity }}"
-
-          # Step 6: Wait for cleaning state, delay, then pause
-          - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') in cleaning_states }}"
-            timeout: 120
-            continue_on_timeout: false
-          # Optional delay before pause (prevents wet floors before base station)
-          - if: "{{ pause_delay_after_undock > 0 }}"
-            then:
-              - delay:
-                  seconds: "{{ pause_delay_after_undock }}"
-          # Pause for manual transport
-          - action: vacuum.pause
-            continue_on_error: true  # Don't abort if vacuum unavailable
-            target:
-              entity_id: "{{ vacuum_entity }}"
-
-          # Step 7: Switch to target map
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ selected_map_select }}"
-            data:
-              option: "{{ notification_target_map_name }}"
-          - wait_template: "{{ states(selected_map_select) == notification_target_map_name }}"
-            timeout: 30
-            continue_on_timeout: false
-
-          # Step 8: Re-disable customized_cleaning (map switch re-enables it)
-          - action: switch.turn_off
-            continue_on_error: true  # Don't abort if switch unavailable
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-
-          # Step 9: Re-set cleaning mode (map switch overwrites it)
-          - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
-            data:
-              option: "{{ notification_target_mode }}"
-
-          # Step 10: Restore self_clean to original state
-          - action: "switch.turn_{{ original_self_clean_state }}"
-            target:
-              entity_id: "switch.{{ vacuum_base_name }}_self_clean"
-
-          # Step 11: Send pickup notification with action buttons
-          - if: "{{ pickup_notification_enabled }}"
-            then:
-              # Define template variables for notification
-              - variables:
-                  map_name: "{{ notification_target_map_name }}"
-                  current_map: "{{ states(selected_map_select) }}"
-                  # Collect valid notification recipients
-                  pickup_notify_services: >
-                    {% set result = [] %}
-                    {% for person in pickup_notification_persons %}
-                      {% if is_state(person, 'home') %}
-                        {% set trackers = state_attr(person, 'device_trackers') %}
-                        {% if trackers %}
-                          {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
-                          {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
-                          {% if tracker_name | length > 0 %}
-                            {% set result = result + ['notify.mobile_app_' + tracker_name] %}
-                          {% endif %}
-                        {% endif %}
-                      {% endif %}
-                    {% endfor %}
-                    {% for group in pickup_notification_groups %}
-                      {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                        {% set result = result + ['notify.' + group] %}
-                      {% endif %}
-                    {% endfor %}
-                    {{ result }}
-              # Send to all valid recipients
-              - repeat:
-                  for_each: "{{ pickup_notify_services }}"
-                  sequence:
-                    - action: "{{ repeat.item }}"
-                      continue_on_error: true
-                      data:
-                        title: !input pickup_notification_title
-                        message: !input pickup_notification_message
-                        data:
-                          actions:
-                            - action: "START_CLEANING"
-                              title: "{{ start_cleaning_button }}"
-                            - action: "CANCEL_CLEANING"
-                              title: "{{ cancel_cleaning_button }}"
-                          push:
-                            interruption-level: "{{ pickup_notification_interruption_level }}"
-                            sound: >
-                              {% if pickup_notification_critical %}
-                                {
-                                  "name": "{{ pickup_notification_sound }}",
-                                  "critical": 1,
-                                  "volume": {{ pickup_notification_volume }}
-                                }
-                              {% else %}
-                                "{{ pickup_notification_sound }}"
-                              {% endif %}
-
-          # Debug: Completion notification
-          - if: "{{ debug_mode }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "✅ Complete Map3"
-                  notification_id: "vacuum_prepare_map3_mop"
-                  message: |
-                    ⏱ {{ now().strftime('%H:%M:%S') }}
-                    **Map:** {{ notification_target_map_name }}
-                    **Mode:** {{ notification_target_mode }}
-                    **Status:** Paused & Ready 🎯
-
-                    🚚 Transport to target map and resume
+              title: "✅ {{ schedule_label }}"
+              notification_id: "vacuum_prepare_{{ _map_num }}_{{ 'mop' if _is_mop else 'sweep' }}"
+              message: |
+                ⏱ {{ now().strftime('%H:%M:%S') }}
+                📍 {{ notification_target_map_name }} | 🧹 {{ notification_target_mode }}
+                ✓ Paused & ready for transport
 
       # ========================================
       # NOTIFICATION ACTION: Skip Cleaning
@@ -4845,6 +2533,7 @@ actions:
                     3. OR: Switch to correct map before starting
 
               - stop: "Emergency pause - invalid map selected"
+                error: true
 
           # Map is valid → Continue (external start on valid map)
           - if:
