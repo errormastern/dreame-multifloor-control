@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum Multi-Button Control"
   description: |
     **🤖 Dreame Vacuum Multi-Button Control**
-    *Version: 0.9.0*
+    *Version: 0.9.1*
 
     Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.
     Intelligent washing detection and configurable delay for easy robot pickup.
@@ -16,6 +16,7 @@ blueprint:
     🗺️ Segment-based Map cleaning with configurable repeats
 
     **Changelog:**
+    **v0.9.1 Changes:** Fixed hardcoded timeouts - now using input variables consistently; washing timeout continues on timeout
     **v0.9.0 Changes:** Major refactor - consolidated 12 handlers into 2 unified handlers (-47% code), added `enabled:` for debug, `error: true` on critical stops
     **v0.8.5 Changes:** Dynamic wait for cleaning_mode_select availability after customized_cleaning switch-off (uses has_value)
     **v0.8.4 Changes:** Fixed device_trackers type check using HA-documented 'is string_like' test
@@ -806,10 +807,11 @@ blueprint:
         mop_start_timeout:
           name: "⏱️ Mop Start Timeout"
           description: |
-            Wait time for robot to start cleaning after mop washing completes (typically 60-120s).
-            Robot undocks and begins cleaning after washing cycle.
+            Wait time for mop operations (typically 60-120s). Used for:
+            • Washing to START after button press
+            • Robot to START cleaning after washing completes
 
-            Adjust if your robot needs more time between washing and undocking.
+            Increase if your robot needs more time to respond.
           selector:
             number:
               min: 60
@@ -1245,8 +1247,6 @@ variables:
   pause_delay_after_undock: !input pause_delay_after_undock
   sweep_start_timeout: !input sweep_start_timeout
   mop_start_timeout: !input mop_start_timeout
-  # Dynamic timeout selection based on cleaning mode
-  start_timeout: "{{ mop_start_timeout if current_mode == mode_sweeping_mopping else sweep_start_timeout }}"
   moistening_timeout: !input moistening_timeout
   use_segment_service: !input use_segment_service
   debug_mode: !input debug_mode
@@ -1834,7 +1834,7 @@ actions:
                       # Wait for washing status to appear
                       - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') == 'washing' }}"
                         timeout:
-                          seconds: 60
+                          seconds: "{{ mop_start_timeout }}"
                         continue_on_timeout: true
 
                       # Wait for washing status to end
@@ -2333,11 +2333,11 @@ actions:
                 target:
                   entity_id: "button.{{ vacuum_base_name }}_self_clean"
               - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') in ['washing', 'clean_add_water'] }}"
-                timeout: 60
+                timeout: "{{ mop_start_timeout }}"
                 continue_on_timeout: false
               - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') not in ['washing', 'clean_add_water'] }}"
-                timeout: 180
-                continue_on_timeout: false
+                timeout: "{{ moistening_timeout }}"
+                continue_on_timeout: true
 
           # Step 5: Extract segments & start cleaning
           - variables:
@@ -2372,7 +2372,7 @@ actions:
 
           # Step 6: Wait for cleaning state, delay, pause
           - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') in cleaning_states }}"
-            timeout: 120
+            timeout: "{{ mop_start_timeout if _is_mop else sweep_start_timeout }}"
             continue_on_timeout: false
           - if: "{{ pause_delay_after_undock > 0 }}"
             then:
