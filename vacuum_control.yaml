@@ -1,7 +1,7 @@
 blueprint:
-  name: "🤖 Dreame Vacuum Multi-Button Control"
+  name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
-    **🤖 Dreame Vacuum Multi-Button Control**
+    **🤖 Dreame Vacuum – Multi-Floor Control**
     *Version: 0.9.5*
 
     Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.

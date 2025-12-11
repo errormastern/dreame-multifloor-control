@@ -1,4 +1,4 @@
-# Dreame Vacuum – Multi-Floor Control
+# 🤖 Dreame Vacuum – Multi-Floor Control
 
 [![Version](https://img.shields.io/badge/version-0.9.5-blue.svg)](https://github.com/errormastern/dreame-multifloor-control/releases)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.10%2B-green.svg)](https://www.home-assistant.io/)
@@ -16,6 +16,7 @@ A Home Assistant blueprint for controlling Dreame vacuums across multiple floors
 🏠 Segment-based cleaning with configurable repeats<br>
 ✨ Optional customised cleaning using room settings from Dreame app<br>
 ⚠️ Safety checks: schedule conflicts, dock status, mop readiness<br>
+🗺️ Auto-discard temporary maps for seamless multi-floor operation<br>
 🐛 Debug mode with timing measurements
 
 
