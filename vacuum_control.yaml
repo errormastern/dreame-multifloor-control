@@ -754,6 +754,24 @@ blueprint:
       collapsed: true
       input:
         # ============================================
+        # MAP HANDLING
+        # ============================================
+        auto_discard_temporary_map:
+          name: "🗺️ Auto-Discard Temporary Maps"
+          description: |
+            Automatically discard temporary maps before switching maps.
+
+            When the robot creates a new map (e.g., after relocation failure),
+            map switching is blocked until the temporary map is saved or discarded.
+            This option automatically discards such maps to allow seamless operation.
+
+            **Disable if:** You want to manually review and save new maps.
+            **Keep enabled:** For fully automated multi-floor operation.
+          selector:
+            boolean:
+          default: true
+
+        # ============================================
         # TIMEOUTS
         # ============================================
         moistening_timeout:
@@ -923,24 +941,6 @@ blueprint:
           selector:
             boolean:
           default: false
-
-        # ============================================
-        # MAP HANDLING
-        # ============================================
-        auto_discard_temporary_map:
-          name: "🗺️ Auto-Discard Temporary Maps"
-          description: |
-            Automatically discard temporary maps before switching maps.
-
-            When the robot creates a new map (e.g., after relocation failure),
-            map switching is blocked until the temporary map is saved or discarded.
-            This option automatically discards such maps to allow seamless operation.
-
-            **Disable if:** You want to manually review and save new maps.
-            **Keep enabled:** For fully automated multi-floor operation.
-          selector:
-            boolean:
-          default: true
 
 # ========================================
 # TRIGGER CONFIGURATION
