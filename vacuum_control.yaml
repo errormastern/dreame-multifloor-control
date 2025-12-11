@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum Multi-Button Control"
   description: |
     **🤖 Dreame Vacuum Multi-Button Control**
-    *Version: 0.9.4*
+    *Version: 0.9.5*
 
     Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.
     Intelligent washing detection and configurable delay for easy robot pickup.
@@ -15,15 +15,6 @@ blueprint:
     ⏭️ Manual control via MQTT, device triggers, state changes, or events
     🗺️ Segment-based Map cleaning with configurable repeats
     💧 Mop readiness check (mop pad + water tank) with sweep-only fallback
-
-    **Changelog:**
-    **v0.9.3 Changes:** Fixed template warnings - added default filters for sweep_display, debug_mode; added validation guards for select.select_option calls
-    **v0.9.2 Changes:** Added mop readiness check - verifies mop pad installed and water tank not empty before mop+sweep; offers sweep-only fallback via notification
-    **v0.9.1 Changes:** Fixed hardcoded timeouts - now using input variables consistently; washing timeout continues on timeout
-    **v0.9.0 Changes:** Major refactor - consolidated 12 handlers into 2 unified handlers (-47% code), added `enabled:` for debug, `error: true` on critical stops
-    **v0.8.5 Changes:** Dynamic wait for cleaning_mode_select availability after customized_cleaning switch-off (uses has_value)
-    **v0.8.4 Changes:** Fixed device_trackers type check using HA-documented 'is string_like' test
-    **v0.8.3 Changes:** Multi-recipient notifications - select multiple persons (presence-checked) and/or notification groups
 
     **Requirements:**
     • Home Assistant ≥ 2024.10.0
@@ -42,14 +33,12 @@ blueprint:
     # ========================================
     robot_config:
       name: "Robot Configuration"
-      description: |
-        Select your Dreame vacuum and configure transport behavior.
-        All related entities (mode, map) are auto-detected, and status is accessed via vacuum entity attributes.
+      description: "Select your Dreame vacuum and configure transport behavior. Entities are auto-detected."
       icon: mdi:robot-vacuum
       collapsed: true
       input:
         vacuum_entity:
-          name: "Vacuum Entity"
+          name: "🤖 Vacuum Entity"
           description: |
             Select your vacuum entity (e.g., `vacuum.xiaomi_x10`).
             All other entities are auto-detected from this selection.
@@ -60,7 +49,7 @@ blueprint:
               multiple: false
 
         pause_delay_after_undock:
-          name: "Pause Delay After Start"
+          name: "⏸️ Pause Delay After Start"
           description: |
             Wait time after starting cleaning before pausing for manual transport.
             Allows robot to move away from base station for easier pickup.
@@ -85,27 +74,23 @@ blueprint:
     # ========================================
     map_1_config:
       name: "Map 1"
-      description: |
-        Configure Map 1: trigger, cleaning settings, and schedules.
-        Map name is auto-detected from your vacuum.
-
-        ⚠️ **Trigger ID for State/Event triggers:** `fn_map1`
+      description: "Configure Map 1: trigger, cleaning settings, and schedules. Map name is auto-detected."
       icon: mdi:home-floor-1
       collapsed: true
       input:
         map1_trigger:
-          name: "Map Switch Trigger"
+          name: "🔀 Map Switch Trigger"
           description: |
             Trigger to switch to this map.
 
             **MQTT/Device triggers:** Auto-detected
-            **State/Event triggers:** Set Trigger ID to `fn_map1`
+            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_map1`
           selector:
             trigger:
           default: []
 
         map_1_cleaning_repeats:
-          name: "Cleaning Repeats"
+          name: "🔄 Cleaning Repeats"
           description: |
             Number of cleaning passes per room/segment (1-3).
 
@@ -152,27 +137,23 @@ blueprint:
     # ========================================
     map_2_config:
       name: "Map 2"
-      description: |
-        Configure Map 2: trigger, cleaning settings, and schedules.
-        Map name is auto-detected from your vacuum.
-
-        ⚠️ **Trigger ID for State/Event triggers:** `fn_map2`
+      description: "Configure Map 2: trigger, cleaning settings, and schedules. Map name is auto-detected."
       icon: mdi:home-floor-2
       collapsed: true
       input:
         map2_trigger:
-          name: "Map Switch Trigger"
+          name: "🔀 Map Switch Trigger"
           description: |
             Trigger to switch to this map.
 
             **MQTT/Device triggers:** Auto-detected
-            **State/Event triggers:** Set Trigger ID to `fn_map2`
+            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_map2`
           selector:
             trigger:
           default: []
 
         map_2_cleaning_repeats:
-          name: "Cleaning Repeats"
+          name: "🔄 Cleaning Repeats"
           description: |
             Number of cleaning passes per room/segment (1-3).
 
@@ -219,27 +200,23 @@ blueprint:
     # ========================================
     map_3_config:
       name: "Map 3"
-      description: |
-        Configure Map 3: trigger, cleaning settings, and schedules.
-        Map name is auto-detected from your vacuum.
-
-        ⚠️ **Trigger ID for State/Event triggers:** `fn_map3`
+      description: "Configure Map 3: trigger, cleaning settings, and schedules. Map name is auto-detected."
       icon: mdi:home-floor-3
       collapsed: true
       input:
         map3_trigger:
-          name: "Map Switch Trigger"
+          name: "🔀 Map Switch Trigger"
           description: |
             Trigger to switch to this map.
 
             **MQTT/Device triggers:** Auto-detected
-            **State/Event triggers:** Set Trigger ID to `fn_map3`
+            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_map3`
           selector:
             trigger:
           default: []
 
         map_3_cleaning_repeats:
-          name: "Cleaning Repeats"
+          name: "🔄 Cleaning Repeats"
           description: |
             Number of cleaning passes per room/segment (1-3).
 
@@ -286,42 +263,34 @@ blueprint:
     # ========================================
     control_functions:
       name: "Control Functions"
-      description: |
-        Configure triggers for mode switching and cleaning control.
-
-        ⚠️ **Important for State/Event Triggers:**
-        MQTT and Device triggers work automatically.
-        For State/Event triggers, you MUST set the **Trigger ID** in advanced options:
-        • Sweep Mode → Trigger ID: `fn_sweep`
-        • Mop Mode → Trigger ID: `fn_mop`
-        • Start/Pause → Trigger ID: `fn_start`
+      description: "Configure triggers for mode switching and cleaning control."
       icon: mdi:gesture-tap-button
       collapsed: true
       input:
         sweep_trigger:
-          name: "Sweep Only Mode Trigger"
+          name: "🧹 Sweep Only Mode Trigger"
           description: |
             Switches vacuum to sweep-only mode (no mopping).
 
             **MQTT/Device triggers:** Auto-detected
-            **State/Event triggers:** Set Trigger ID to `fn_sweep`
+            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_sweep`
           selector:
             trigger:
           default: []
 
         mop_trigger:
-          name: "Sweep + Mop Mode Trigger"
+          name: "💧 Sweep + Mop Mode Trigger"
           description: |
             Switches vacuum to sweep + mop mode (full cleaning).
 
             **MQTT/Device triggers:** Auto-detected
-            **State/Event triggers:** Set Trigger ID to `fn_mop`
+            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_mop`
           selector:
             trigger:
           default: []
 
         start_trigger:
-          name: "Smart Start/Pause/Resume Trigger"
+          name: "▶️ Smart Start/Pause/Resume Trigger"
           description: |
             Intelligent control based on robot status:
             • Idle → Start cleaning
@@ -329,7 +298,7 @@ blueprint:
             • Paused → Resume
 
             **MQTT/Device triggers:** Auto-detected
-            **State/Event triggers:** Set Trigger ID to `fn_start`
+            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_start`
           selector:
             trigger:
           default: []
@@ -339,14 +308,12 @@ blueprint:
     # ========================================
     scheduled_notification_config:
       name: "Scheduled Cleaning Notifications"
-      description: |
-        Notifications when schedule triggers on maps without base station.
-        User clicks "Prepare Robot" → robot moves to waiting position → pickup notification follows.
+      description: "Notifications when schedule triggers. Prepare Robot → robot moves → pickup notification follows."
       icon: mdi:calendar-clock
       collapsed: true
       input:
         scheduled_notification_enabled:
-          name: "Enable Notifications"
+          name: "🔔 Enable Notifications"
           description: |
             Send notification when schedule triggers on non-base station map.
             "Prepare Robot" button starts preparation workflow.
@@ -380,7 +347,7 @@ blueprint:
           default: []
 
         scheduled_notification_title:
-          name: "Title"
+          name: "📝 Title"
           description: |
             Notification title (supports Jinja2 templates).
 
@@ -391,7 +358,7 @@ blueprint:
           default: "Scheduled Cleaning Ready"
 
         scheduled_notification_message:
-          name: "Message"
+          name: "💬 Message"
           description: |
             Notification message body (supports Jinja2 templates).
 
@@ -403,7 +370,7 @@ blueprint:
           default: "{{ robot_name }} is ready for scheduled cleaning on {{ map_name }} ({{ cleaning_mode_display }}). Please prepare the robot."
 
         scheduled_notification_repeat_count:
-          name: "Repeat Count"
+          name: "🔁 Repeat Count"
           description: |
             How many times to resend notification if user doesn't respond (1-3).
             Stops when user clicks any button or max repeats reached.
@@ -416,7 +383,7 @@ blueprint:
           default: 2
 
         scheduled_notification_repeat_interval:
-          name: "Repeat Interval"
+          name: "⏱️ Repeat Interval"
           description: |
             Wait time before sending next reminder (0-240 minutes).
             Set to 0 to disable repeats.
@@ -430,7 +397,7 @@ blueprint:
           default: 15
 
         scheduled_notification_interruption_level:
-          name: "iOS Interruption Level"
+          name: "📱 iOS Interruption Level"
           description: |
             Notification priority level for iOS devices.
 
@@ -452,7 +419,7 @@ blueprint:
           default: "active"
 
         scheduled_notification_sound:
-          name: "iOS Sound"
+          name: "🔊 iOS Sound"
           description: |
             Sound file name for iOS notifications.
             Examples: `default`, `none`, or custom sound name
@@ -461,7 +428,7 @@ blueprint:
           default: "default"
 
         scheduled_notification_critical:
-          name: "iOS Critical Alert"
+          name: "🚨 iOS Critical Alert"
           description: |
             Enable critical alert (bypasses Do Not Disturb and mute switch).
             Requires special iOS permission. Use only for urgent notifications!
@@ -470,7 +437,7 @@ blueprint:
           default: false
 
         scheduled_notification_volume:
-          name: "iOS Critical Volume"
+          name: "🔈 iOS Critical Volume"
           description: |
             Volume for critical alerts (0.0-1.0).
             Only applies when critical alert is enabled.
@@ -487,14 +454,12 @@ blueprint:
     # ========================================
     pickup_notification_config:
       name: "Pickup Notifications"
-      description: |
-        Notifications when robot is paused and ready for manual transport.
-        User transports robot → clicks "Start Cleaning" → robot resumes.
+      description: "Notifications when robot is ready for transport. User transports → clicks Start → robot resumes."
       icon: mdi:robot-vacuum-alert
       collapsed: true
       input:
         pickup_notification_enabled:
-          name: "Enable Notifications"
+          name: "🔔 Enable Notifications"
           description: |
             Send notification when robot is paused and ready for transport.
             User can start cleaning after placing robot on target floor.
@@ -528,7 +493,7 @@ blueprint:
           default: []
 
         pickup_notification_title:
-          name: "Title"
+          name: "📝 Title"
           description: |
             Notification title (supports Jinja2 templates).
 
@@ -539,7 +504,7 @@ blueprint:
           default: "Robot Ready for Transport"
 
         pickup_notification_message:
-          name: "Message"
+          name: "💬 Message"
           description: |
             Notification message body (supports Jinja2 templates).
 
@@ -551,7 +516,7 @@ blueprint:
           default: "{{ robot_name }} is paused and ready for transport to {{ map_name }}. Please pick up the robot."
 
         pickup_notification_repeat_count:
-          name: "Repeat Count"
+          name: "🔁 Repeat Count"
           description: |
             How many times to resend notification if robot not started (1-3).
             Stops when cleaning resumes or max repeats reached.
@@ -564,7 +529,7 @@ blueprint:
           default: 2
 
         pickup_notification_repeat_interval:
-          name: "Repeat Interval"
+          name: "⏱️ Repeat Interval"
           description: |
             Wait time before sending next reminder (0-240 minutes).
             Set to 0 to disable repeats.
@@ -578,7 +543,7 @@ blueprint:
           default: 10
 
         pickup_notification_interruption_level:
-          name: "iOS Interruption Level"
+          name: "📱 iOS Interruption Level"
           description: |
             Notification priority level for iOS devices.
 
@@ -600,7 +565,7 @@ blueprint:
           default: "time-sensitive"
 
         pickup_notification_sound:
-          name: "iOS Sound"
+          name: "🔊 iOS Sound"
           description: |
             Sound file name for iOS notifications.
             Examples: `default`, `none`, or custom sound name
@@ -609,7 +574,7 @@ blueprint:
           default: "default"
 
         pickup_notification_critical:
-          name: "iOS Critical Alert"
+          name: "🚨 iOS Critical Alert"
           description: |
             Enable critical alert (bypasses Do Not Disturb and mute switch).
             Requires special iOS permission. Use only for urgent notifications!
@@ -618,7 +583,7 @@ blueprint:
           default: false
 
         pickup_notification_volume:
-          name: "iOS Critical Volume"
+          name: "🔈 iOS Critical Volume"
           description: |
             Volume for critical alerts (0.0-1.0).
             Only applies when critical alert is enabled.
@@ -635,13 +600,12 @@ blueprint:
     # ========================================
     cleaning_settings:
       name: "Cleaning Settings"
-      description: |
-        Configure cleaning behavior and segment-based cleaning.
+      description: "Configure cleaning behavior and segment-based cleaning."
       icon: mdi:tune
       collapsed: true
       input:
         global_cleaning_repeats:
-          name: "Global Cleaning Repeats (Fallback)"
+          name: "🔄 Global Cleaning Repeats (Fallback)"
           description: |
             Default cleaning passes per room/segment (1-3).
             Used only when per-map repeats are not configured.
@@ -661,7 +625,7 @@ blueprint:
           default: 2
 
         use_segment_service:
-          name: "Use Segment Service"
+          name: "🧩 Use Segment Service"
           description: |
             Enable room/segment-based cleaning with configurable repeats.
             Uses `dreame_vacuum.vacuum_clean_segment` service.
@@ -676,7 +640,7 @@ blueprint:
           default: true
 
         use_cleaning_sequence:
-          name: "Use Cleaning Sequence"
+          name: "📋 Use Cleaning Sequence"
           description: |
             Enable room cleaning sequence from Dreame app settings (uses `order` attribute from map).
             Optional: Cleans rooms in user-defined order from Dreame app.
@@ -688,7 +652,7 @@ blueprint:
           default: true
 
         use_customized_cleaning:
-          name: "Use Customized Cleaning (Mop Modes Only)"
+          name: "⚙️ Use Customized Cleaning (Mop Modes Only)"
           description: |
             Enable room-specific cleaning settings from Dreame app (suction level, water volume, mop humidity, repeats per room).
             Optional: Uses per-room settings defined in Dreame app.
@@ -705,77 +669,75 @@ blueprint:
     # ========================================
     localization_config:
       name: "Localization"
-      description: |
-        Customize display texts for notifications and buttons.
-        Perfect for non-English Home Assistant installations.
+      description: "Customize display texts for notifications and buttons."
       icon: mdi:translate
       collapsed: true
       input:
         sweep_display_text:
-          name: "Sweep Mode Display Name"
+          name: "🧹 Sweep Mode Display Name"
           description: "Display name for sweep-only mode (e.g., 'Saugen' in German)"
           selector:
             text:
           default: "Sweep"
 
         mop_display_text:
-          name: "Mop Mode Display Name"
+          name: "💧 Mop Mode Display Name"
           description: "Display name for mop-only mode (e.g., 'Wischen' in German)"
           selector:
             text:
           default: "Mop"
 
         sweep_mop_display_text:
-          name: "Combined Mode Display Name"
+          name: "🧹💧 Combined Mode Display Name"
           description: "Display name for combined sweep+mop mode (e.g., 'Saugen + Wischen' in German)"
           selector:
             text:
           default: "Sweep + Mop"
 
         prepare_button_text:
-          name: "Prepare Button Label"
+          name: "✋ Prepare Button Label"
           description: "Button text for robot preparation (e.g., 'Roboter vorbereiten' in German)"
           selector:
             text:
           default: "Prepare Robot"
 
         skip_button_text:
-          name: "Skip Button Label"
+          name: "⏭️ Skip Button Label"
           description: "Button text for skipping cleaning (e.g., 'Reinigung überspringen' in German)"
           selector:
             text:
           default: "Skip Cleaning"
 
         start_cleaning_button_text:
-          name: "Start Cleaning Button Label"
+          name: "▶️ Start Cleaning Button Label"
           description: "Button text for starting cleaning (e.g., 'Reinigung starten' in German)"
           selector:
             text:
           default: "Start Cleaning"
 
         cancel_cleaning_button_text:
-          name: "Cancel Button Label"
+          name: "❌ Cancel Button Label"
           description: "Button text for canceling (e.g., 'Abbrechen' in German)"
           selector:
             text:
           default: "Cancel Cleaning"
 
         sweep_only_button_text:
-          name: "Sweep Only Button Label"
+          name: "🧹 Sweep Only Button Label"
           description: "Button text for sweep-only fallback when mop not ready"
           selector:
             text:
           default: "Start Sweep Only"
 
         mop_not_ready_title:
-          name: "Mop Not Ready - Title"
+          name: "⚠️ Mop Not Ready - Title"
           description: "Notification title when mop pads missing or water empty"
           selector:
             text:
           default: "⚠️ Mop Not Ready"
 
         mop_not_ready_message:
-          name: "Mop Not Ready - Message"
+          name: "💬 Mop Not Ready - Message"
           description: "Notification message when mop pads missing or water empty"
           selector:
             text:
@@ -787,9 +749,7 @@ blueprint:
     # ========================================
     advanced_settings:
       name: "Advanced Settings"
-      description: |
-        Advanced configuration: timeouts, mode values, status detection, and debugging.
-        Most users can keep the defaults.
+      description: "Timeouts, mode values, status detection, and debugging. Most users can keep defaults."
       icon: mdi:cog
       collapsed: true
       input:
