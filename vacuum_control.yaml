@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum Multi-Button Control"
   description: |
     **🤖 Dreame Vacuum Multi-Button Control**
-    *Version: 0.9.3*
+    *Version: 0.9.4*
 
     Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.
     Intelligent washing detection and configurable delay for easy robot pickup.
@@ -964,6 +964,24 @@ blueprint:
             boolean:
           default: false
 
+        # ============================================
+        # MAP HANDLING
+        # ============================================
+        auto_discard_temporary_map:
+          name: "🗺️ Auto-Discard Temporary Maps"
+          description: |
+            Automatically discard temporary maps before switching maps.
+
+            When the robot creates a new map (e.g., after relocation failure),
+            map switching is blocked until the temporary map is saved or discarded.
+            This option automatically discards such maps to allow seamless operation.
+
+            **Disable if:** You want to manually review and save new maps.
+            **Keep enabled:** For fully automated multi-floor operation.
+          selector:
+            boolean:
+          default: true
+
 # ========================================
 # TRIGGER CONFIGURATION
 # ========================================
@@ -1134,6 +1152,10 @@ triggers:
 variables:
   # Input Werte importieren - Roboter Entitäten
   vacuum_entity: !input vacuum_entity
+
+  # Map handling settings
+  auto_discard_temp_map: !input auto_discard_temporary_map
+  has_temporary_map: "{{ state_attr(vacuum_entity, 'has_temporary_map') | default(false) }}"
 
   # ========================================
   # AUTO-DETECTION: Extract base name from vacuum entity
@@ -2048,6 +2070,16 @@ actions:
           - condition: template
             value_template: "{{ triggered_function == 'fn_map1' }}"
         sequence:
+          # Discard temporary map if exists and auto-discard enabled
+          - if: "{{ auto_discard_temp_map and has_temporary_map }}"
+            then:
+              - action: dreame_vacuum.vacuum_discard_temporary_map
+                continue_on_error: true
+                target:
+                  entity_id: "{{ vacuum_entity }}"
+              - delay:
+                  seconds: 2
+
           - action: select.select_option
             continue_on_error: true  # Don't abort if select entity unavailable
             target:
@@ -2071,6 +2103,16 @@ actions:
           - condition: template
             value_template: "{{ triggered_function == 'fn_map2' }}"
         sequence:
+          # Discard temporary map if exists and auto-discard enabled
+          - if: "{{ auto_discard_temp_map and has_temporary_map }}"
+            then:
+              - action: dreame_vacuum.vacuum_discard_temporary_map
+                continue_on_error: true
+                target:
+                  entity_id: "{{ vacuum_entity }}"
+              - delay:
+                  seconds: 2
+
           - action: select.select_option
             continue_on_error: true  # Don't abort if select entity unavailable
             target:
@@ -2094,6 +2136,16 @@ actions:
           - condition: template
             value_template: "{{ triggered_function == 'fn_map3' }}"
         sequence:
+          # Discard temporary map if exists and auto-discard enabled
+          - if: "{{ auto_discard_temp_map and has_temporary_map }}"
+            then:
+              - action: dreame_vacuum.vacuum_discard_temporary_map
+                continue_on_error: true
+                target:
+                  entity_id: "{{ vacuum_entity }}"
+              - delay:
+                  seconds: 2
+
           - action: select.select_option
             continue_on_error: true  # Don't abort if select entity unavailable
             target:
@@ -2210,6 +2262,16 @@ actions:
               entity_id: "{{ cleaning_mode_select }}"
             data:
               option: "{{ target_mode }}"
+
+          # Discard temporary map if exists and auto-discard enabled
+          - if: "{{ auto_discard_temp_map and has_temporary_map }}"
+            then:
+              - action: dreame_vacuum.vacuum_discard_temporary_map
+                continue_on_error: true
+                target:
+                  entity_id: "{{ vacuum_entity }}"
+              - delay:
+                  seconds: 2
 
           # Switch map
           - action: select.select_option
@@ -2497,7 +2559,17 @@ actions:
             target:
               entity_id: "{{ vacuum_entity }}"
 
-          # Step 7: Switch to target map
+          # Step 7: Discard temporary map if exists
+          - if: "{{ auto_discard_temp_map and has_temporary_map }}"
+            then:
+              - action: dreame_vacuum.vacuum_discard_temporary_map
+                continue_on_error: true
+                target:
+                  entity_id: "{{ vacuum_entity }}"
+              - delay:
+                  seconds: 2
+
+          # Step 8: Switch to target map
           - action: select.select_option
             enabled: "{{ notification_target_map_name | default('') != '' }}"
             continue_on_error: true
@@ -2509,13 +2581,13 @@ actions:
             timeout: 30
             continue_on_timeout: false
 
-          # Step 8: Re-disable customized_cleaning
+          # Step 9: Re-disable customized_cleaning
           - action: switch.turn_off
             continue_on_error: true
             target:
               entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
 
-          # Step 9: Re-set cleaning mode
+          # Step 10: Re-set cleaning mode
           - action: select.select_option
             enabled: "{{ notification_target_mode | default('') != '' }}"
             continue_on_error: true
@@ -2524,13 +2596,13 @@ actions:
             data:
               option: "{{ notification_target_mode }}"
 
-          # Step 10: Restore self_clean
+          # Step 11: Restore self_clean
           - action: "switch.turn_{{ original_self_clean_state }}"
             continue_on_error: true
             target:
               entity_id: "switch.{{ vacuum_base_name }}_self_clean"
 
-          # Step 11: Send pickup notification
+          # Step 12: Send pickup notification
           - if: "{{ pickup_notification_enabled }}"
             then:
               - variables:
@@ -2702,6 +2774,16 @@ actions:
                   - condition: template
                     value_template: "{{ current_map_name != base_station_map }}"
                 sequence:
+                  # Discard temporary map if exists and auto-discard enabled
+                  - if: "{{ auto_discard_temp_map and has_temporary_map }}"
+                    then:
+                      - action: dreame_vacuum.vacuum_discard_temporary_map
+                        continue_on_error: true
+                        target:
+                          entity_id: "{{ vacuum_entity }}"
+                      - delay:
+                          seconds: 2
+
                   - action: select.select_option
                     continue_on_error: true  # Don't abort if select entity unavailable
                     target:
