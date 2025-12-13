@@ -8,7 +8,6 @@ blueprint:
     Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers. **Never care about the right robot settings for seamless multi-floor cleaning again.**
 
     **✨ Main Features:**
-    _________________________________________________________________________
     🤖 Auto-detection of vacuum entities (select vacuum, rest auto-detected)
     📅 Per-map schedules with sweep/mop modes (3 maps, 6 schedules total)
     🔔 Notification workflow with action buttons for transport preparation
@@ -1143,8 +1142,6 @@ variables:
   # Auto-detect all map names from map camera entities
   # Format: camera.{robot}_map_1, _map_2, etc.
   # Extracts: custom_name (if set) or map_name (default)
-
-  # OPTIMIZED: Cache custom_name lookup to avoid 2x state_attr calls per map (Context7 best practice)
   map_1_name: >
     {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_1' %}
     {% if has_value(map_entity) %}
@@ -1258,7 +1255,6 @@ variables:
   # Dynamically select map config based on current_map_name
   # Robust with fallbacks to prevent undefined errors
   # IMPORTANT: Must come BEFORE variables that use it (like repeats, is_base_station_map)
-  # OPTIMIZED: dict.get pattern for readability (Context7 best practice)
   current_map_config: >
     {% set map_lookup = {
       map_1_name: map_config.map_1,
@@ -2364,7 +2360,6 @@ actions:
                                       title: "{{ skip_button }}"
                                   push:
                                     interruption-level: "{{ scheduled_notification_interruption_level }}"
-                                    # OPTIMIZED: YAML dict syntax instead of raw JSON string (Context7 best practice)
                                     sound: >
                                       {% if scheduled_notification_critical %}
                                         {{ {'name': scheduled_notification_sound, 'critical': 1, 'volume': scheduled_notification_volume} }}
@@ -2619,7 +2614,6 @@ actions:
                               title: "{{ cancel_cleaning_button }}"
                           push:
                             interruption-level: "{{ pickup_notification_interruption_level }}"
-                            # OPTIMIZED: YAML dict syntax instead of raw JSON string (Context7 best practice)
                             sound: >
                               {% if pickup_notification_critical %}
                                 {{ {'name': pickup_notification_sound, 'critical': 1, 'volume': pickup_notification_volume} }}
