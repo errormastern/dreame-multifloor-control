@@ -4,16 +4,17 @@ blueprint:
     **🤖 Dreame Vacuum – Multi-Floor Control**
     *Version: 0.9.6*
 
-    Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.
-    Intelligent washing detection and configurable delay for easy robot pickup.
-    Optional: Uses room-specific settings from Dreame app (cleaning order, suction, water, repeats per room).
+    A Home Assistant blueprint for controlling Dreame vacuums across multiple floors.
+    Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers.
+    **Never care about the right robot settings for seamless multi-floor cleaning again.**
 
-    **Main Features:**
+    **✨ Main Features:**
     🤖 Auto-detection of vacuum entities (select vacuum, rest auto-detected)
     📅 Per-map schedules with sweep/mop modes (3 maps, 6 schedules total)
     🔔 Notification workflow with action buttons for transport preparation
     ⏭️ Manual control via MQTT, device triggers, state changes, or events
-    🗺️ Segment-based Map cleaning with configurable repeats
+    🏠 Segment-based Map cleaning with configurable repeats
+    🗺️ Auto-discard temporary maps for seamless multi-floor operation
     💧 Mop readiness check (mop pad + water tank) with sweep-only fallback
 
     **Requirements:**
@@ -1389,8 +1390,7 @@ variables:
   # Priority 2: Device Trigger subtype (Zigbee2MQTT device actions)
   # Priority 3: MQTT payload fallback
   # Result: "fn_sweep", "fn_mop", "fn_start", "fn_map1", "fn_map2", "fn_map3", or "unknown"
-
-  # OPTIMIZED: DRY principle - single source of truth for action mappings (Context7 best practice)
+  #
   action_to_function_map:
     "1_single": "fn_sweep"
     "2_single": "fn_mop"
@@ -1420,7 +1420,6 @@ variables:
     {% endif %}
 
   # Extract segment_id from segments dict (fallback: use keys if segment_id unavailable) - with entity availability check
-  # OPTIMIZED: Cache state_attr() call to avoid 3x duplicate lookups (Context7 best practice)
   segment_ids: >
     {% if has_value(map_camera) %}
       {% set segs = state_attr(map_camera, 'segments') %}
