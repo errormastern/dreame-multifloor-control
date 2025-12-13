@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
     **🤖 Dreame Vacuum – Multi-Floor Control**
-    *Version: 0.9.5*
+    *Version: 0.9.6*
 
     Multi-floor control for Dreame vacuum cleaners with simplified, reliable start/pause workflow.
     Intelligent washing detection and configurable delay for easy robot pickup.
@@ -1143,10 +1143,12 @@ variables:
   # Format: camera.{robot}_map_1, _map_2, etc.
   # Extracts: custom_name (if set) or map_name (default)
 
+  # OPTIMIZED: Cache custom_name lookup to avoid 2x state_attr calls per map (Context7 best practice)
   map_1_name: >
     {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_1' %}
     {% if has_value(map_entity) %}
-      {{ state_attr(map_entity, 'custom_name') | default(state_attr(map_entity, 'map_name'), true) }}
+      {% set custom = state_attr(map_entity, 'custom_name') %}
+      {{ custom if custom else state_attr(map_entity, 'map_name') }}
     {% else %}
       Map 1
     {% endif %}
@@ -1154,7 +1156,8 @@ variables:
   map_2_name: >
     {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_2' %}
     {% if has_value(map_entity) %}
-      {{ state_attr(map_entity, 'custom_name') | default(state_attr(map_entity, 'map_name'), true) }}
+      {% set custom = state_attr(map_entity, 'custom_name') %}
+      {{ custom if custom else state_attr(map_entity, 'map_name') }}
     {% else %}
       Map 2
     {% endif %}
@@ -1162,7 +1165,8 @@ variables:
   map_3_name: >
     {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_3' %}
     {% if has_value(map_entity) %}
-      {{ state_attr(map_entity, 'custom_name') | default(state_attr(map_entity, 'map_name'), true) }}
+      {% set custom = state_attr(map_entity, 'custom_name') %}
+      {{ custom if custom else state_attr(map_entity, 'map_name') }}
     {% else %}
       Map 3
     {% endif %}
@@ -1253,7 +1257,14 @@ variables:
   # Dynamically select map config based on current_map_name
   # Robust with fallbacks to prevent undefined errors
   # IMPORTANT: Must come BEFORE variables that use it (like repeats, is_base_station_map)
-  current_map_config: "{{ map_config.map_1 if current_map_name == map_1_name else (map_config.map_2 if current_map_name == map_2_name else (map_config.map_3 if current_map_name == map_3_name else map_config.map_1)) }}"
+  # OPTIMIZED: dict.get pattern for readability (Context7 best practice)
+  current_map_config: >
+    {% set map_lookup = {
+      map_1_name: map_config.map_1,
+      map_2_name: map_config.map_2,
+      map_3_name: map_config.map_3
+    } %}
+    {{ map_lookup.get(current_map_name, map_config.map_1) }}
 
   # Boolean Evaluations with robust defaults
   is_base_station_map: "{{ current_map_config.has_base_station | default(false) if current_map_config is mapping else (current_map_name == base_station_map) }}"
@@ -1378,27 +1389,22 @@ variables:
   # Priority 2: Device Trigger subtype (Zigbee2MQTT device actions)
   # Priority 3: MQTT payload fallback
   # Result: "fn_sweep", "fn_mop", "fn_start", "fn_map1", "fn_map2", "fn_map3", or "unknown"
+
+  # OPTIMIZED: DRY principle - single source of truth for action mappings (Context7 best practice)
+  action_to_function_map:
+    "1_single": "fn_sweep"
+    "2_single": "fn_mop"
+    "3_single": "fn_start"
+    "4_single": "fn_map1"
+    "5_single": "fn_map2"
+    "6_single": "fn_map3"
+
   triggered_function: >
     {% if trigger.id is defined and trigger.id != '' %}
       {{ trigger.id }}
-    {% elif trigger.platform == 'device' and trigger.subtype is defined %}
-      {% set action = trigger.subtype %}
-      {% if action == '1_single' %}fn_sweep
-      {% elif action == '2_single' %}fn_mop
-      {% elif action == '3_single' %}fn_start
-      {% elif action == '4_single' %}fn_map1
-      {% elif action == '5_single' %}fn_map2
-      {% elif action == '6_single' %}fn_map3
-      {% else %}unknown{% endif %}
-    {% elif trigger.platform == 'mqtt' and trigger.payload_json is defined %}
-      {% set action = trigger.payload_json.action | default('') %}
-      {% if action == '1_single' %}fn_sweep
-      {% elif action == '2_single' %}fn_mop
-      {% elif action == '3_single' %}fn_start
-      {% elif action == '4_single' %}fn_map1
-      {% elif action == '5_single' %}fn_map2
-      {% elif action == '6_single' %}fn_map3
-      {% else %}unknown{% endif %}
+    {% elif trigger.platform in ['device', 'mqtt'] %}
+      {% set action = trigger.subtype if trigger.platform == 'device' else (trigger.payload_json.action | default('')) %}
+      {{ action_to_function_map.get(action, 'unknown') }}
     {% else %}unknown{% endif %}
 
   # Room/Segment Data Processing (Hybrid: supports both rooms and segments)
@@ -1414,9 +1420,16 @@ variables:
     {% endif %}
 
   # Extract segment_id from segments dict (fallback: use keys if segment_id unavailable) - with entity availability check
+  # OPTIMIZED: Cache state_attr() call to avoid 3x duplicate lookups (Context7 best practice)
   segment_ids: >
     {% if has_value(map_camera) %}
-      {{ state_attr(map_camera, 'segments').values() | map(attribute='segment_id') | list if state_attr(map_camera, 'segments') and state_attr(map_camera, 'segments').values() | map(attribute='segment_id') | list | length > 0 else (state_attr(map_camera, 'segments').keys() | map('int') | list if state_attr(map_camera, 'segments') else []) }}
+      {% set segs = state_attr(map_camera, 'segments') %}
+      {% if segs %}
+        {% set seg_ids = segs.values() | map(attribute='segment_id') | list %}
+        {{ seg_ids if seg_ids | length > 0 else (segs.keys() | map('int') | list) }}
+      {% else %}
+        []
+      {% endif %}
     {% else %}
       []
     {% endif %}
@@ -1569,7 +1582,7 @@ actions:
           - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
             then:
               - action: switch.turn_off
-                continue_on_error: true  # Don't abort if switch unavailable
+                continue_on_error: true # Don't abort if switch unavailable
                 target:
                   entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
               - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
@@ -1582,7 +1595,7 @@ actions:
             continue_on_timeout: false
 
           - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
+            continue_on_error: true # Don't abort if select entity unavailable
             target:
               entity_id: "{{ cleaning_mode_select }}"
             data:
@@ -1608,7 +1621,7 @@ actions:
           - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
             then:
               - action: switch.turn_off
-                continue_on_error: true  # Don't abort if switch unavailable
+                continue_on_error: true # Don't abort if switch unavailable
                 target:
                   entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
               - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
@@ -1621,7 +1634,7 @@ actions:
             continue_on_timeout: false
 
           - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
+            continue_on_error: true # Don't abort if select entity unavailable
             target:
               entity_id: "{{ cleaning_mode_select }}"
             data:
@@ -1650,7 +1663,7 @@ actions:
                     value_template: "{{ is_cleaning }}"
                 sequence:
                   - action: vacuum.pause
-                    continue_on_error: true  # Don't abort if vacuum unavailable
+                    continue_on_error: true # Don't abort if vacuum unavailable
                     target:
                       entity_id: "{{ vacuum_entity }}"
 
@@ -1669,7 +1682,7 @@ actions:
                     value_template: "{{ is_paused }}"
                 sequence:
                   - action: vacuum.start
-                    continue_on_error: true  # Don't abort if vacuum unavailable
+                    continue_on_error: true # Don't abort if vacuum unavailable
                     target:
                       entity_id: "{{ vacuum_entity }}"
 
@@ -1737,7 +1750,7 @@ actions:
                             value_template: "{{ use_segment_service and has_segments }}"
                         then:
                           - action: dreame_vacuum.vacuum_clean_segment
-                            continue_on_error: true  # Don't abort if vacuum unavailable
+                            continue_on_error: true # Don't abort if vacuum unavailable
                             target:
                               entity_id: "{{ vacuum_entity }}"
                             data:
@@ -1809,7 +1822,7 @@ actions:
                                   message: "⏱ {{ now().strftime('%H:%M:%S') }}\nAborting 2h drying process..."
 
                           - action: button.press
-                            continue_on_error: true  # Don't abort if button unavailable
+                            continue_on_error: true # Don't abort if button unavailable
                             target:
                               entity_id: "{{ stop_drying_button }}"
 
@@ -1828,7 +1841,7 @@ actions:
 
                       # Start manual mop washing (always trigger in sweep+mop mode)
                       - action: button.press
-                        continue_on_error: true  # Don't abort if button unavailable
+                        continue_on_error: true # Don't abort if button unavailable
                         target:
                           entity_id: "{{ self_clean_button }}"
 
@@ -1944,7 +1957,7 @@ actions:
                         value_template: "{{ use_segment_service and has_segments }}"
                     then:
                       - action: dreame_vacuum.vacuum_clean_segment
-                        continue_on_error: true  # Don't abort if vacuum unavailable
+                        continue_on_error: true # Don't abort if vacuum unavailable
                         target:
                           entity_id: "{{ vacuum_entity }}"
                         data:
@@ -1952,7 +1965,7 @@ actions:
                           repeats: "{{ repeats }}"
                     else:
                       - action: vacuum.start
-                        continue_on_error: true  # Don't abort if vacuum unavailable
+                        continue_on_error: true # Don't abort if vacuum unavailable
                         target:
                           entity_id: "{{ vacuum_entity }}"
 
@@ -1978,7 +1991,7 @@ actions:
 
                   # Pause for manual transport
                   - action: vacuum.pause
-                    continue_on_error: true  # Don't abort if vacuum unavailable
+                    continue_on_error: true # Don't abort if vacuum unavailable
                     target:
                       entity_id: "{{ vacuum_entity }}"
 
@@ -2041,7 +2054,7 @@ actions:
                   seconds: 2
 
           - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
+            continue_on_error: true # Don't abort if select entity unavailable
             target:
               entity_id: "{{ selected_map_select }}"
             data:
@@ -2074,7 +2087,7 @@ actions:
                   seconds: 2
 
           - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
+            continue_on_error: true # Don't abort if select entity unavailable
             target:
               entity_id: "{{ selected_map_select }}"
             data:
@@ -2107,7 +2120,7 @@ actions:
                   seconds: 2
 
           - action: select.select_option
-            continue_on_error: true  # Don't abort if select entity unavailable
+            continue_on_error: true # Don't abort if select entity unavailable
             target:
               entity_id: "{{ selected_map_select }}"
             data:
@@ -2282,6 +2295,9 @@ actions:
                         {% if target_mode == mode_sweeping %}{{ sweep_display | default('Sweep') }}
                         {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display | default('Sweep+Mop') }}
                         {% else %}{{ target_mode }}{% endif %}
+                      # NOTE: Notification service builder pattern (duplicated in pickup_notify_services)
+                      # REASON: Jinja2 in HA blueprints doesn't support macros/functions
+                      # If modifying this logic, update pickup_notify_services as well
                       scheduled_notify_services: >
                         {% set ns = namespace(result=[]) %}
                         {% for person in scheduled_notification_persons %}
@@ -2349,15 +2365,12 @@ actions:
                                       title: "{{ skip_button }}"
                                   push:
                                     interruption-level: "{{ scheduled_notification_interruption_level }}"
+                                    # OPTIMIZED: YAML dict syntax instead of raw JSON string (Context7 best practice)
                                     sound: >
                                       {% if scheduled_notification_critical %}
-                                        {
-                                          "name": "{{ scheduled_notification_sound }}",
-                                          "critical": 1,
-                                          "volume": {{ scheduled_notification_volume }}
-                                        }
+                                        {{ {'name': scheduled_notification_sound, 'critical': 1, 'volume': scheduled_notification_volume} }}
                                       {% else %}
-                                        "{{ scheduled_notification_sound }}"
+                                        {{ scheduled_notification_sound }}
                                       {% endif %}
 
                       - action: persistent_notification.create
@@ -2568,6 +2581,9 @@ actions:
               - variables:
                   map_name: "{{ notification_target_map_name }}"
                   current_map: "{{ states(selected_map_select) }}"
+                  # NOTE: Notification service builder pattern (duplicated in scheduled_notify_services)
+                  # REASON: Jinja2 in HA blueprints doesn't support macros/functions
+                  # If modifying this logic, update scheduled_notify_services as well
                   pickup_notify_services: >
                     {% set result = [] %}
                     {% for person in pickup_notification_persons %}
@@ -2604,15 +2620,12 @@ actions:
                               title: "{{ cancel_cleaning_button }}"
                           push:
                             interruption-level: "{{ pickup_notification_interruption_level }}"
+                            # OPTIMIZED: YAML dict syntax instead of raw JSON string (Context7 best practice)
                             sound: >
                               {% if pickup_notification_critical %}
-                                {
-                                  "name": "{{ pickup_notification_sound }}",
-                                  "critical": 1,
-                                  "volume": {{ pickup_notification_volume }}
-                                }
+                                {{ {'name': pickup_notification_sound, 'critical': 1, 'volume': pickup_notification_volume} }}
                               {% else %}
-                                "{{ pickup_notification_sound }}"
+                                {{ pickup_notification_sound }}
                               {% endif %}
 
           # Debug: Complete
@@ -2745,7 +2758,7 @@ actions:
                           seconds: 2
 
                   - action: select.select_option
-                    continue_on_error: true  # Don't abort if select entity unavailable
+                    continue_on_error: true # Don't abort if select entity unavailable
                     target:
                       entity_id: "{{ selected_map_select }}"
                     data:
