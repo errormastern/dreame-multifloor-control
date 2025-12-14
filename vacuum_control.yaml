@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
     **🤖 Dreame Vacuum – Multi-Floor Control**
-    *Version: 0.9.7*
+    *Version: 0.9.9*
 
     A Home Assistant blueprint for controlling Dreame vacuums across multiple floors.
     Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers. **Never care about the right robot settings for seamless multi-floor cleaning again.**
@@ -1995,6 +1995,37 @@ actions:
                         continue_on_error: true # Don't abort if vacuum unavailable
                         target:
                           entity_id: "{{ vacuum_entity }}"
+
+                  # Wait for robot to actually start cleaning (verify state change)
+                  - variables:
+                      timing_start_cleaning_wait: "{{ now().timestamp() }}"
+                      expected_cleaning_states: >
+                        {% if current_mode == mode_sweeping_only %}
+                          ['sweeping']
+                        {% elif current_mode == mode_sweeping_mopping %}
+                          ['sweeping_and_mopping', 'mopping']
+                        {% else %}
+                          ['sweeping', 'mopping', 'sweeping_and_mopping']
+                        {% endif %}
+
+                  - wait_template: >
+                      {{ states('sensor.' ~ vacuum_base_name ~ '_state') in expected_cleaning_states }}
+                    timeout: 30
+                    continue_on_timeout: false
+
+                  - variables:
+                      timing_end_cleaning_wait: "{{ now().timestamp() }}"
+                      duration_cleaning_wait: "{{ (timing_end_cleaning_wait - timing_start_cleaning_wait) | round(1) }}"
+                      timeout_step: "{{ 'cleaning_wait' if not wait.completed and timeout_step is none else timeout_step }}"
+
+                  - if:
+                      - condition: template
+                        value_template: "{{ debug_mode | default(false) }}"
+                    then:
+                      - action: persistent_notification.create
+                        data:
+                          title: "✅ Robot Started Cleaning"
+                          message: "⏱ {{ now().strftime('%H:%M:%S') }}\nWait duration: {{ duration_cleaning_wait }}s\nState: {{ states('sensor.' ~ vacuum_base_name ~ '_state') }}"
 
                   # Delay to allow robot to move away from station
                   - variables:
