@@ -1905,6 +1905,8 @@ actions:
                           timing_end_washing: "{{ now().timestamp() }}"
                           duration_washing: "{{ (timing_end_washing - timing_start_washing) | round(1) }}"
                           timeout_step: "{{ 'washing' if not wait.completed and timeout_step is none else timeout_step }}"
+                          self_wash_base_status_entity: "sensor.{{ vacuum_base_name }}_self_wash_base_status"
+                          current_base_status: "{{ states(self_wash_base_status_entity) if has_value(self_wash_base_status_entity) else 'unknown' }}"
 
                       - if:
                           - condition: template
@@ -1914,6 +1916,35 @@ actions:
                             data:
                               title: "⏱️ Timing: Washing Complete"
                               message: "⏱ {{ now().strftime('%H:%M:%S') }}\nDuration: {{ duration_washing }}s / {{ moistening_timeout }}s{{ ' (TIMEOUT)' if not wait.completed else '' }}"
+
+                      # Force-stop washing/drying if timeout occurred and base still active
+                      - if: "{{ not wait.completed and current_base_status in ['washing', 'drying'] }}"
+                        then:
+                          - if: "{{ debug_mode | default(false) }}"
+                            then:
+                              - action: persistent_notification.create
+                                data:
+                                  title: "⚠️ Force-Stop Base Operation"
+                                  message: "⏱ {{ now().strftime('%H:%M:%S') }}\nTimeout reached, base status: {{ current_base_status }}. Stopping..."
+
+                          # Stop washing if still washing
+                          - if: "{{ current_base_status == 'washing' }}"
+                            then:
+                              - action: button.press
+                                target:
+                                  entity_id: "button.{{ vacuum_base_name }}_pause_washing"
+                                continue_on_error: true
+
+                          # Stop drying if still drying
+                          - if: "{{ current_base_status == 'drying' }}"
+                            then:
+                              - action: button.press
+                                target:
+                                  entity_id: "button.{{ vacuum_base_name }}_stop_drying"
+                                continue_on_error: true
+
+                          - delay:
+                              seconds: 3
 
                   # Enable customized cleaning features (other map - after washing, before start)
                   - if: "{{ has_customized_cleaning and current_mode == mode_sweeping_mopping }}"
