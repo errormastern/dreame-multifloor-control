@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
     **🤖 Dreame Vacuum – Multi-Floor Control**
-    *Version: 0.9.6*
+    *Version: 0.9.7*
 
     A Home Assistant blueprint for controlling Dreame vacuums across multiple floors.
     Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers. **Never care about the right robot settings for seamless multi-floor cleaning again.**
@@ -2195,69 +2195,70 @@ actions:
               - stop: "Robot not docked, cannot start scheduled cleaning"
                 error: true
 
-          # Disable customized_cleaning if active
-          - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+          # Base station map → Prepare and start immediately
+          - if: "{{ target_map_config.has_base_station }}"
             then:
-              - action: switch.turn_off
-                continue_on_error: true
-                target:
-                  entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-              - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
+              # Disable customized_cleaning if active
+              - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+                then:
+                  - action: switch.turn_off
+                    continue_on_error: true
+                    target:
+                      entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
+                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
+                    timeout: 10
+                    continue_on_timeout: false
+
+              # Wait for cleaning_mode_select availability
+              - wait_template: "{{ has_value(cleaning_mode_select) }}"
                 timeout: 10
                 continue_on_timeout: false
 
-          # Wait for cleaning_mode_select availability
-          - wait_template: "{{ has_value(cleaning_mode_select) }}"
-            timeout: 10
-            continue_on_timeout: false
+              # Enable cleaning_sequence if available
+              - if: "{{ has_cleaning_sequence and is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
+                then:
+                  - action: switch.turn_on
+                    continue_on_error: true
+                    target:
+                      entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
+                  - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
+                    timeout: 5
+                    continue_on_timeout: true
 
-          # Enable cleaning_sequence if available
-          - if: "{{ has_cleaning_sequence and is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-            then:
-              - action: switch.turn_on
+              # Set mode
+              - action: select.select_option
+                enabled: "{{ target_mode | default('') != '' }}"
                 continue_on_error: true
                 target:
-                  entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-              - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                timeout: 5
-                continue_on_timeout: true
+                  entity_id: "{{ cleaning_mode_select }}"
+                data:
+                  option: "{{ target_mode }}"
 
-          # Set mode
-          - action: select.select_option
-            enabled: "{{ target_mode | default('') != '' }}"
-            continue_on_error: true
-            target:
-              entity_id: "{{ cleaning_mode_select }}"
-            data:
-              option: "{{ target_mode }}"
+              # Discard temporary map if exists and auto-discard enabled
+              - if: "{{ auto_discard_temp_map and has_temporary_map }}"
+                then:
+                  - action: dreame_vacuum.vacuum_discard_temporary_map
+                    continue_on_error: true
+                    target:
+                      entity_id: "{{ vacuum_entity }}"
+                  - delay:
+                      seconds: 2
 
-          # Discard temporary map if exists and auto-discard enabled
-          - if: "{{ auto_discard_temp_map and has_temporary_map }}"
-            then:
-              - action: dreame_vacuum.vacuum_discard_temporary_map
+              # Switch map
+              - action: select.select_option
+                enabled: "{{ target_map_name | default('') != '' }}"
                 continue_on_error: true
                 target:
-                  entity_id: "{{ vacuum_entity }}"
-              - delay:
-                  seconds: 2
+                  entity_id: "{{ selected_map_select }}"
+                data:
+                  option: "{{ target_map_name }}"
 
-          # Switch map
-          - action: select.select_option
-            enabled: "{{ target_map_name | default('') != '' }}"
-            continue_on_error: true
-            target:
-              entity_id: "{{ selected_map_select }}"
-            data:
-              option: "{{ target_map_name }}"
+              # Verify map switch
+              - wait_template: "{{ states(selected_map_select) == target_map_name }}"
+                timeout: 30
+                continue_on_timeout: false
 
-          # Verify map switch
-          - wait_template: "{{ states(selected_map_select) == target_map_name }}"
-            timeout: 30
-            continue_on_timeout: false
-
-          # Base station map → Start immediately
-          - if: "{{ target_map_config.has_base_station }}"
-            then:
+              # Start cleaning
               - if: "{{ use_segment_service and has_segments }}"
                 then:
                   - action: dreame_vacuum.vacuum_clean_segment
@@ -2279,99 +2280,124 @@ actions:
                   title: "✅ {{ schedule_label }}"
                   message: "Started on base station map"
 
-            # Non-base station → Send notification
+            # Non-base station → Send notification immediately
             else:
-              - if: "{{ scheduled_notification_enabled }}"
+              # Check if notifications enabled
+              - if: "{{ not scheduled_notification_enabled }}"
                 then:
-                  - variables:
-                      map_name: "{{ target_map_name }}"
-                      schedule_name: "{{ schedule_label }}"
-                      cleaning_mode_display: >
-                        {% if target_mode == mode_sweeping %}{{ sweep_display | default('Sweep') }}
-                        {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display | default('Sweep+Mop') }}
-                        {% else %}{{ target_mode }}{% endif %}
-                      # NOTE: Notification service builder pattern (duplicated in pickup_notify_services)
-                      # REASON: Jinja2 in HA blueprints doesn't support macros/functions
-                      # If modifying this logic, update pickup_notify_services as well
-                      scheduled_notify_services: >
-                        {% set ns = namespace(result=[]) %}
-                        {% for person in scheduled_notification_persons %}
-                          {% if is_state(person, 'home') %}
-                            {% set trackers = state_attr(person, 'device_trackers') %}
-                            {% if trackers %}
-                              {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
-                              {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
-                              {% if tracker_name | length > 0 %}
-                                {% set ns.result = ns.result + ['notify.mobile_app_' + tracker_name] %}
-                              {% endif %}
-                            {% endif %}
+                  - action: persistent_notification.create
+                    data:
+                      title: "⚠️ {{ schedule_label }} - Configuration Error"
+                      message: "Map '{{ target_map_name }}' has no base station. Scheduled notifications must be enabled."
+                      notification_id: "schedule_config_error_{{ vacuum_base_name }}"
+                  - stop: "Scheduled notification required but disabled"
+                    error: true
+
+              # Build notification service list
+              - variables:
+                  map_name: "{{ target_map_name }}"
+                  schedule_name: "{{ schedule_label }}"
+                  cleaning_mode_display: >
+                    {% if target_mode == mode_sweeping %}{{ sweep_display | default('Sweep') }}
+                    {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display | default('Sweep+Mop') }}
+                    {% else %}{{ target_mode }}{% endif %}
+                  # NOTE: Notification service builder pattern (duplicated in pickup_notify_services)
+                  # REASON: Jinja2 in HA blueprints doesn't support macros/functions
+                  # If modifying this logic, update pickup_notify_services as well
+                  scheduled_notify_services: >
+                    {% set ns = namespace(result=[]) %}
+                    {% for person in scheduled_notification_persons %}
+                      {% if is_state(person, 'home') %}
+                        {% set trackers = state_attr(person, 'device_trackers') %}
+                        {% if trackers %}
+                          {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
+                          {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
+                          {% if tracker_name | length > 0 %}
+                            {% set ns.result = ns.result + ['notify.mobile_app_' + tracker_name] %}
                           {% endif %}
-                        {% endfor %}
-                        {% for group in scheduled_notification_groups %}
-                          {% if group and group not in ['', 'unknown', 'unavailable', none] %}
-                            {% set ns.result = ns.result + ['notify.' + group] %}
-                          {% endif %}
-                        {% endfor %}
-                        {{ ns.result }}
-                      sweep_fallback_action_id: "PREPARE_MAP{{ _map_num }}_SWEEP_FALLBACK"
+                        {% endif %}
+                      {% endif %}
+                    {% endfor %}
+                    {% for group in scheduled_notification_groups %}
+                      {% if group and group not in ['', 'unknown', 'unavailable', none] %}
+                        {% set ns.result = ns.result + ['notify.' + group] %}
+                      {% endif %}
+                    {% endfor %}
+                    {{ ns.result }}
+                  sweep_fallback_action_id: "PREPARE_MAP{{ _map_num }}_SWEEP_FALLBACK"
 
-                  # Check mop readiness for mop mode
-                  - if: "{{ target_mode == mode_sweeping_mopping and not mop_ready }}"
-                    then:
-                      # Send warning notification with sweep-only fallback option
-                      - repeat:
-                          for_each: "{{ scheduled_notify_services }}"
-                          sequence:
-                            - action: "{{ repeat.item }}"
-                              continue_on_error: true
-                              data:
-                                title: "{{ mop_not_ready_title }}"
-                                message: "{{ mop_not_ready_message }}"
-                                data:
-                                  actions:
-                                    - action: "{{ sweep_fallback_action_id }}"
-                                      title: "{{ sweep_only_button }}"
-                                    - action: "SKIP_CLEANING"
-                                      title: "{{ skip_button }}"
-                                  push:
-                                    interruption-level: "{{ scheduled_notification_interruption_level }}"
+              # Check if any notification recipients available
+              - if: "{{ scheduled_notify_services | length == 0 }}"
+                then:
+                  - action: persistent_notification.create
+                    data:
+                      title: "⚠️ {{ schedule_label }} - No Recipients"
+                      message: "No 'home' persons found for notification. Schedule cannot proceed."
+                      notification_id: "schedule_no_recipients_{{ vacuum_base_name }}"
+                  - stop: "No notification recipients available"
+                    error: true
 
-                      - action: persistent_notification.create
-                        enabled: "{{ debug_mode | default(false) }}"
-                        data:
-                          title: "⚠️ Mop Not Ready"
-                          message: "Mop: {{ mop_pad_status }} | Water: {{ water_warning_status }}"
+              # Check mop readiness for mop mode
+              - if: "{{ target_mode == mode_sweeping_mopping and not mop_ready }}"
+                then:
+                  # Send warning notification with sweep-only fallback option
+                  - repeat:
+                      for_each: "{{ scheduled_notify_services }}"
+                      sequence:
+                        - action: "{{ repeat.item }}"
+                          continue_on_error: true
+                          data:
+                            title: "{{ mop_not_ready_title }}"
+                            message: "{{ mop_not_ready_message }}"
+                            data:
+                              actions:
+                                - action: "{{ sweep_fallback_action_id }}"
+                                  title: "{{ sweep_only_button }}"
+                                - action: "SKIP_CLEANING"
+                                  title: "{{ skip_button }}"
+                              push:
+                                interruption-level: "{{ scheduled_notification_interruption_level }}"
 
-                    else:
-                      # Normal notification flow
-                      - repeat:
-                          for_each: "{{ scheduled_notify_services }}"
-                          sequence:
-                            - action: "{{ repeat.item }}"
-                              continue_on_error: true
-                              data:
-                                title: !input scheduled_notification_title
-                                message: !input scheduled_notification_message
-                                data:
-                                  actions:
-                                    - action: "{{ prepare_action_id }}"
-                                      title: "{{ prepare_button }}"
-                                    - action: "SKIP_CLEANING"
-                                      title: "{{ skip_button }}"
-                                  push:
-                                    interruption-level: "{{ scheduled_notification_interruption_level }}"
-                                    sound: >
-                                      {% if scheduled_notification_critical %}
-                                        {{ {'name': scheduled_notification_sound, 'critical': 1, 'volume': scheduled_notification_volume} }}
-                                      {% else %}
-                                        {{ scheduled_notification_sound }}
-                                      {% endif %}
+                  - action: persistent_notification.create
+                    enabled: "{{ debug_mode | default(false) }}"
+                    data:
+                      title: "⚠️ Mop Not Ready"
+                      message: "Mop: {{ mop_pad_status }} | Water: {{ water_warning_status }}"
 
-                      - action: persistent_notification.create
-                        enabled: "{{ debug_mode | default(false) }}"
-                        data:
-                          title: "🔔 {{ schedule_label }}"
-                          message: "Notification sent, awaiting preparation"
+                else:
+                  # Normal notification flow
+                  - repeat:
+                      for_each: "{{ scheduled_notify_services }}"
+                      sequence:
+                        - action: "{{ repeat.item }}"
+                          continue_on_error: true
+                          data:
+                            title: !input scheduled_notification_title
+                            message: !input scheduled_notification_message
+                            data:
+                              actions:
+                                - action: "{{ prepare_action_id }}"
+                                  title: "{{ prepare_button }}"
+                                - action: "SKIP_CLEANING"
+                                  title: "{{ skip_button }}"
+                              push:
+                                interruption-level: "{{ scheduled_notification_interruption_level }}"
+                                sound: >
+                                  {% if scheduled_notification_critical %}
+                                    {{ {'name': scheduled_notification_sound, 'critical': 1, 'volume': scheduled_notification_volume} }}
+                                  {% else %}
+                                    {{ scheduled_notification_sound }}
+                                  {% endif %}
+
+                  - action: persistent_notification.create
+                    enabled: "{{ debug_mode | default(false) }}"
+                    data:
+                      title: "🔔 {{ schedule_label }}"
+                      message: "Notification sent, awaiting preparation"
+
+              # Stop after notification (success, not error)
+              - stop: "Scheduled notification sent, awaiting user action"
+                error: false
 
       # ========================================
       # NOTIFICATION ACTION HANDLERS
