@@ -10,6 +10,7 @@ A Home Assistant blueprint for controlling Dreame vacuums across multiple floors
 ## ✨ Features
 
 🤖 Auto-detection of vacuum entities (select vacuum, rest detected automatically)<br>
+⚙️ Automatically verify and configure optimal robot settings prior to each cleaning cycle<br>
 📅 Per-map schedules with sweep/mop modes (3 maps, 6 schedules)<br>
 🔔 Notification workflow with action buttons for transport<br>
 👥 Multi-recipient notifications with presence checking<br>

@@ -9,6 +9,7 @@ blueprint:
 
     **✨ Main Features:**
     🤖 Auto-detection of vacuum entities (select vacuum, rest auto-detected)
+    ⚙️ Automatically verify and configure optimal robot settings prior to each cleaning cycle
     📅 Per-map schedules with sweep/mop modes (3 maps, 6 schedules total)
     🔔 Notification workflow with action buttons for transport preparation
     ⏭️ Manual control via MQTT, device triggers, state changes, or events
