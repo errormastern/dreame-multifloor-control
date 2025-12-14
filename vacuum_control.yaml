@@ -1969,6 +1969,24 @@ actions:
                             timeout: 5
                             continue_on_timeout: false
 
+                  # Disable self_clean BEFORE start (prevent auto-return to station)
+                  - if:
+                      - condition: template
+                        value_template: "{{ has_value(self_clean_switch) and is_state(self_clean_switch, 'on') }}"
+                    then:
+                      - action: switch.turn_off
+                        target:
+                          entity_id: "{{ self_clean_switch }}"
+
+                      - if:
+                          - condition: template
+                            value_template: "{{ debug_mode | default(false) }}"
+                        then:
+                          - action: persistent_notification.create
+                            data:
+                              title: "🔧 Self-Clean Disabled"
+                              message: "⏱ {{ now().strftime('%H:%M:%S') }}\nDisabled before start to prevent auto-return"
+
                   # Start cleaning (both sweep-only and sweep+mop)
                   - if:
                       - condition: template
@@ -2052,24 +2070,6 @@ actions:
                     continue_on_error: true # Don't abort if vacuum unavailable
                     target:
                       entity_id: "{{ vacuum_entity }}"
-
-                  # Disable self_clean after pause (robot should not return to station)
-                  - if:
-                      - condition: template
-                        value_template: "{{ has_value(self_clean_switch) and is_state(self_clean_switch, 'on') }}"
-                    then:
-                      - action: switch.turn_off
-                        target:
-                          entity_id: "{{ self_clean_switch }}"
-
-                      - if:
-                          - condition: template
-                            value_template: "{{ debug_mode | default(false) }}"
-                        then:
-                          - action: persistent_notification.create
-                            data:
-                              title: "🔧 Self-Clean Disabled"
-                              message: "⏱ {{ now().strftime('%H:%M:%S') }}\nRobot will not return to station"
 
                   - if:
                       - condition: template
