@@ -2531,7 +2531,7 @@ actions:
                 **Repeats:** {{ notification_cleaning_repeats }}
 
           # SAFETY CHECKS (before any actions)
-          - if: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') not in ['idle', 'docked', 'charging'] }}"
+          - if: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') not in ['idle', 'docked', 'charging', 'sleeping'] }}"
             then:
               - action: persistent_notification.create
                 data:
