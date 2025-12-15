@@ -1,6 +1,6 @@
 # 🤖 Dreame Vacuum – Multi-Floor Control
 
-[![Version](https://img.shields.io/badge/version-0.9.11-blue.svg)](https://github.com/errormastern/dreame-multifloor-control/releases)
+[![Version](https://img.shields.io/badge/version-0.9.12-blue.svg)](https://github.com/errormastern/dreame-multifloor-control/releases)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.10%2B-green.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 
@@ -161,9 +161,7 @@ Customise notification variables in the Localisation section:
 
 **Solutions:**
 1. Attach mop pad to robot
-2. Restart Home Assistant or reload integration
-3. Use debug mode to verify entity status
-4. Robot will still clean using default mode
+2. Use debug mode to verify entity status
 
 **Debug Mode Output:**
 ```

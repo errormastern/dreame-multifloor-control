@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
     **🤖 Dreame Vacuum – Multi-Floor Control**
-    *Version: 0.9.11*
+    *Version: 0.9.12*
 
     A Home Assistant blueprint for controlling Dreame vacuums across multiple floors.
     Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers. **Never care about the right robot settings for seamless multi-floor cleaning again.**
@@ -2530,6 +2530,71 @@ actions:
                 **Mode:** {{ notification_target_mode }}
                 **Repeats:** {{ notification_cleaning_repeats }}
 
+          # SAFETY CHECKS (before any actions)
+          - if: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') not in ['idle', 'docked', 'charging'] }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "⚠️ Robot Busy"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    **Status:** {{ states('sensor.' ~ vacuum_base_name ~ '_status') }}
+                    **Cannot switch map while active**
+                  notification_id: "prepare_busy_error_{{ vacuum_base_name }}"
+              - stop: "Robot busy, cannot switch map"
+                error: true
+
+          - if: "{{ notification_target_map_name == '' or notification_target_map_name == 'unavailable' }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "⚠️ Invalid Map"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    **Map Number:** {{ _map_num }}
+                    **Target:** {{ notification_target_map_name }}
+                  notification_id: "prepare_map_error_{{ vacuum_base_name }}"
+              - stop: "Target map unavailable"
+                error: true
+
+          # MAP SWITCH FIRST (before all other actions!)
+          - action: persistent_notification.create
+            enabled: "{{ debug_mode | default(false) }}"
+            data:
+              title: "🗺️ Switching Map"
+              notification_id: "vacuum_map_switch_{{ _map_num }}"
+              message: |
+                {{ now().strftime('%H:%M:%S') }}
+
+                **From:** {{ states(selected_map_select) }}
+                **To:** {{ notification_target_map_name }}
+
+          - action: select.select_option
+            target:
+              entity_id: "{{ selected_map_select }}"
+            data:
+              option: "{{ notification_target_map_name }}"
+
+          - wait_template: "{{ states(selected_map_select) == notification_target_map_name }}"
+            timeout: 30
+            continue_on_timeout: false
+
+          # 5-second delay for map loading
+          - delay:
+              seconds: 5
+
+          - action: persistent_notification.create
+            enabled: "{{ debug_mode | default(false) }}"
+            data:
+              title: "✅ Map Ready"
+              notification_id: "vacuum_map_switch_{{ _map_num }}"
+              message: |
+                {{ now().strftime('%H:%M:%S') }}
+
+                **Active Map:** {{ states(selected_map_select) }}
+
           # Step 1: Disable customized_cleaning
           - action: switch.turn_off
             continue_on_error: true
@@ -2635,17 +2700,8 @@ actions:
               - delay:
                   seconds: 2
 
-          # Step 8: Switch to target map
-          - action: select.select_option
-            enabled: "{{ notification_target_map_name | default('') != '' }}"
-            continue_on_error: true
-            target:
-              entity_id: "{{ selected_map_select }}"
-            data:
-              option: "{{ notification_target_map_name }}"
-          - wait_template: "{{ states(selected_map_select) == notification_target_map_name }}"
-            timeout: 30
-            continue_on_timeout: false
+          # [REMOVED] Step 8: Switch to target map - Now happens FIRST (before washing)
+          # Map switch moved to beginning of sequence for correct map during washing/starting
 
           # Step 9: Re-disable customized_cleaning
           - action: switch.turn_off
@@ -2802,19 +2858,36 @@ actions:
           - condition: template
             value_template: "{{ trigger.id == 'notification_start' }}"
         sequence:
+          # Verification: Check if robot is still paused
+          - if: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') != 'paused' }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "⚠️ Not Paused"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    **Status:** {{ states('sensor.' ~ vacuum_base_name ~ '_status') }}
+                  notification_id: "start_not_paused_{{ vacuum_base_name }}"
+              - stop: "Robot not in paused state"
+                error: true
+
+          # Debug: Resume
+          - action: persistent_notification.create
+            enabled: "{{ debug_mode | default(false) }}"
+            data:
+              title: "▶️ Resume"
+              notification_id: "vacuum_resume_{{ vacuum_base_name }}"
+              message: |
+                {{ now().strftime('%H:%M:%S') }}
+
+                **Map:** {{ states(selected_map_select) }}
+                **Status:** {{ states('sensor.' ~ vacuum_base_name ~ '_status') }}
+
           # Resume cleaning after transport
           - action: vacuum.start
             target:
               entity_id: "{{ vacuum_entity }}"
-
-          - if:
-              - condition: template
-                value_template: "{{ debug_mode | default(false) }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "▶️ Resumed"
-                  message: "{{ now().strftime('%H:%M:%S') }}"
 
       # ========================================
       # NOTIFICATION ACTION: Cancel Cleaning
