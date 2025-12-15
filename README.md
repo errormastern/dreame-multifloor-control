@@ -1,6 +1,6 @@
 # 🤖 Dreame Vacuum – Multi-Floor Control
 
-[![Version](https://img.shields.io/badge/version-0.9.9-blue.svg)](https://github.com/errormastern/dreame-multifloor-control/releases)
+[![Version](https://img.shields.io/badge/version-0.9.11-blue.svg)](https://github.com/errormastern/dreame-multifloor-control/releases)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.10%2B-green.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 
@@ -144,6 +144,35 @@ Customise notification variables in the Localisation section:
 **Automation mode:** `queued` (max: 10) – required for button devices sending press + release events.
 
 **Tested with:** Xiaomi X10+ (Dreame L10s Ultra and other supported models should work).
+
+
+## 🔧 Troubleshooting
+
+### Cleaning Mode Not Changing
+
+**Symptom:** Mode selection functions (Sweep/Mop) don't change robot cleaning mode.
+
+**Cause:** Mop pad not installed → `cleaning_mode` entity becomes unavailable.
+
+**Explanation:**
+- Dreame integration disables `cleaning_mode` when only 1 option available
+- Robot will use current/default cleaning mode
+- Automation continues successfully (won't abort)
+
+**Solutions:**
+1. Attach mop pad to robot
+2. Restart Home Assistant or reload integration
+3. Use debug mode to verify entity status
+4. Robot will still clean using default mode
+
+**Debug Mode Output:**
+```
+⚙️ Mode: Sweep+Mop
+Status: ⚠️ Unavailable
+Entity: select.robot_name_cleaning_mode
+Reason: Mop pad not installed or entity disabled
+Time: 14:30:15
+```
 
 
 ## 🔗 Links

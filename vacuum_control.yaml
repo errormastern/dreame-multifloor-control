@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
     **🤖 Dreame Vacuum – Multi-Floor Control**
-    *Version: 0.9.9*
+    *Version: 0.9.11*
 
     A Home Assistant blueprint for controlling Dreame vacuums across multiple floors.
     Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers. **Never care about the right robot settings for seamless multi-floor cleaning again.**
@@ -1540,10 +1540,9 @@ actions:
                 timeout: 10
                 continue_on_timeout: false
 
-          # Wait for cleaning_mode_select to become available after customized_cleaning change
-          - wait_template: "{{ has_value(cleaning_mode_select) }}"
-            timeout: 10
-            continue_on_timeout: false
+          # [REMOVED] wait_template for cleaning_mode_select availability
+          # Reason: Hardware-dependent (mop pad), won't resolve by waiting
+          # Service call below has continue_on_error protection
 
           - action: select.select_option
             continue_on_error: true # Don't abort if select entity unavailable
@@ -1559,7 +1558,11 @@ actions:
               - action: persistent_notification.create
                 data:
                   title: "⚙️ Mode: Sweep"
-                  message: "{{ now().strftime('%H:%M:%S') }}"
+                  message: |
+                    **Status:** {{ 'Applied' if has_value(cleaning_mode_select) else '⚠️ Unavailable' }}
+                    **Entity:** {{ cleaning_mode_select }}
+                    **Reason:** {{ 'OK' if has_value(cleaning_mode_select) else 'Mop pad not installed or entity disabled' }}
+                    **Time:** {{ now().strftime('%H:%M:%S') }}
 
       # ========================================
       # FUNCTION 2: Sweep + Mop Mode (fn_mop)
@@ -1579,10 +1582,9 @@ actions:
                 timeout: 10
                 continue_on_timeout: false
 
-          # Wait for cleaning_mode_select to become available after customized_cleaning change
-          - wait_template: "{{ has_value(cleaning_mode_select) }}"
-            timeout: 10
-            continue_on_timeout: false
+          # [REMOVED] wait_template for cleaning_mode_select availability
+          # Reason: Hardware-dependent (mop pad), won't resolve by waiting
+          # Service call below has continue_on_error protection
 
           - action: select.select_option
             continue_on_error: true # Don't abort if select entity unavailable
@@ -1598,7 +1600,11 @@ actions:
               - action: persistent_notification.create
                 data:
                   title: "⚙️ Mode: Sweep+Mop"
-                  message: "{{ now().strftime('%H:%M:%S') }}"
+                  message: |
+                    **Status:** {{ 'Applied' if has_value(cleaning_mode_select) else '⚠️ Unavailable' }}
+                    **Entity:** {{ cleaning_mode_select }}
+                    **Reason:** {{ 'OK' if has_value(cleaning_mode_select) else 'Mop pad not installed or entity disabled' }}
+                    **Time:** {{ now().strftime('%H:%M:%S') }}
 
       # ========================================
       # FUNCTION 3: Smart Start/Pause/Resume (fn_start)
@@ -1894,20 +1900,20 @@ actions:
 
                                     **Status:** {{ current_base_status }}
 
-                          # Stop washing if still washing
+                          # Stop washing if still washing (toggle button in v2.0.0b21+)
                           - if: "{{ current_base_status == 'washing' }}"
                             then:
                               - action: button.press
                                 target:
-                                  entity_id: "button.{{ vacuum_base_name }}_pause_washing"
+                                  entity_id: "button.{{ vacuum_base_name }}_self_clean"
                                 continue_on_error: true
 
-                          # Stop drying if still drying
+                          # Stop drying if still drying (toggle button in v2.0.0b21+)
                           - if: "{{ current_base_status == 'drying' }}"
                             then:
                               - action: button.press
                                 target:
-                                  entity_id: "button.{{ vacuum_base_name }}_stop_drying"
+                                  entity_id: "button.{{ vacuum_base_name }}_manual_drying"
                                 continue_on_error: true
 
                           - delay:
@@ -2256,10 +2262,10 @@ actions:
                     timeout: 10
                     continue_on_timeout: false
 
-              # Wait for cleaning_mode_select availability
+              # Check cleaning_mode_select availability (hardware-dependent)
               - wait_template: "{{ has_value(cleaning_mode_select) }}"
-                timeout: 10
-                continue_on_timeout: false
+                timeout: 2 # Shorter timeout (not waiting for state change)
+                continue_on_timeout: true # Continue even if unavailable
 
               # Enable cleaning_sequence if available
               - if: "{{ has_cleaning_sequence and is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
