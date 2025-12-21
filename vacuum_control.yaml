@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
     **🤖 Dreame Vacuum – Multi-Floor Control**
-    *Version: 0.9.12*
+    *Version: 0.9.13*
 
     A Home Assistant blueprint for controlling Dreame vacuums across multiple floors.
     Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers. **Never care about the right robot settings for seamless multi-floor cleaning again.**
@@ -1138,6 +1138,18 @@ variables:
   stop_drying_button: "button.{{ vacuum_base_name }}_manual_drying"
 
   # ========================================
+  # ERROR DETECTION
+  # ========================================
+  error_entity: "sensor.{{ vacuum_base_name }}_error"
+  error_message: >
+    {% set error_state = states(error_entity) %}
+    {% if error_state not in ['unknown', 'unavailable', 'no_error', 'none'] %}
+      {{ error_state }}
+    {% else %}
+      Unknown error
+    {% endif %}
+
+  # ========================================
   # MAP CONFIGURATION (Fully Auto-Detected)
   # ========================================
   # Auto-detect all map names from map camera entities
@@ -1262,7 +1274,8 @@ variables:
       map_2_name: map_config.map_2,
       map_3_name: map_config.map_3
     } %}
-    {{ map_lookup.get(current_map_name, map_config.map_1) }}
+    {% set config = map_lookup.get(current_map_name, map_config.map_1) %}
+    {{ config if config is mapping and config.name is defined else map_config.map_1 }}
 
   # Boolean Evaluations with robust defaults
   is_base_station_map: "{{ current_map_config.has_base_station | default(false) if current_map_config is mapping else (current_map_name == base_station_map) }}"
@@ -1411,7 +1424,8 @@ variables:
   # Extract room_id from rooms dict (preferred) - with entity availability check
   room_ids: >
     {% if has_value(map_camera) %}
-      {{ state_attr(map_camera, 'rooms').values() | map(attribute='room_id') | list if state_attr(map_camera, 'rooms') else [] }}
+      {% set rooms = state_attr(map_camera, 'rooms') %}
+      {{ rooms.values() | map(attribute='room_id') | list if rooms is mapping else [] }}
     {% else %}
       []
     {% endif %}
@@ -1420,7 +1434,7 @@ variables:
   segment_ids: >
     {% if has_value(map_camera) %}
       {% set segs = state_attr(map_camera, 'segments') %}
-      {% if segs %}
+      {% if segs is mapping %}
         {% set seg_ids = segs.values() | map(attribute='segment_id') | list %}
         {{ seg_ids if seg_ids | length > 0 else (segs.keys() | map('int') | list) }}
       {% else %}
@@ -1469,18 +1483,28 @@ actions:
       # ERROR STATE DETECTED
       # ========================================
       - conditions:
-          - condition: template
-            value_template: "{{ is_error }}"
+          - condition: or
+            conditions:
+              # Check 1: Status sensor in error states
+              - condition: template
+                value_template: "{{ is_error }}"
+              # Check 2: Error entity has actual error
+              - condition: template
+                value_template: >
+                  {{ states(error_entity) not in ['no_error', 'unknown', 'unavailable', 'none'] }}
         sequence:
           - action: persistent_notification.create
             data:
-              title: "⚠️ Robot Error"
+              title: "⚠️ {{ robot_name }} - Robot Error"
               message: |
                 {{ now().strftime('%H:%M:%S') }}
 
                 **Status:** {{ current_status }}
+                **Error:** {{ error_message }}
+
+                *Automation aborted*
               notification_id: "dreame_error_{{ vacuum_base_name }}"
-          - stop: "Robot in error state, aborting automation"
+          - stop: "Robot in error state: {{ error_message }}"
             error: true
 
       # ========================================
@@ -2215,12 +2239,33 @@ actions:
                 } %}
                 {{ entities.get(trigger.id, 'none') }}
 
-          # Skip if schedule entity is "none"
+          # ========================================
+          # CHECK 1: ERROR STATE (ALWAYS FIRST!)
+          # ========================================
+          - if: >
+              {{ states(error_entity) not in ['no_error', 'unknown', 'unavailable', 'none'] }}
+            then:
+              - if: "{{ debug_mode }}"
+                then:
+                  - action: persistent_notification.create
+                    data:
+                      title: "⚠️ Schedule Aborted - Robot Error"
+                      message: |
+                        {{ now().strftime('%H:%M:%S') }}
+
+                        **Map:** {{ target_map_name }}
+                        **Mode:** {{ 'Mop' if _is_mop else 'Sweep' }}
+                        **Error:** {{ error_message }}
+                      notification_id: "schedule_error_{{ vacuum_base_name }}"
+              - stop: "Schedule aborted: Robot error {{ error_message }}"
+                error: true
+
+          # CHECK 2: Skip if schedule entity is "none"
           - if: "{{ _schedule_entity == 'none' }}"
             then:
               - stop: "Schedule not configured"
 
-          # Conflict check
+          # CHECK 3: Conflict check
           - if: "{{ schedule_conflict_detected }}"
             then:
               - action: persistent_notification.create
@@ -2488,7 +2533,28 @@ actions:
               notification_cleaning_repeats: "{{ map_config['map_' ~ _map_num].cleaning_repeats }}"
               schedule_label: "Map {{ _map_num }} {{ 'Mop' if _is_mop else 'Sweep' }}"
 
-          # Dock check
+          # ========================================
+          # CHECK 1: ERROR STATE (ALWAYS FIRST!)
+          # ========================================
+          - if: >
+              {{ states(error_entity) not in ['no_error', 'unknown', 'unavailable', 'none'] }}
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "⚠️ Preparation Failed - Robot Error"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    **Schedule:** {{ schedule_label }}
+                    **Map:** {{ notification_target_map_name }}
+                    **Error:** {{ error_message }}
+
+                    *Please resolve error before starting*
+                  notification_id: "prepare_error_{{ vacuum_base_name }}"
+              - stop: "Cannot prepare: Robot error {{ error_message }}"
+                error: true
+
+          # CHECK 2: Dock check
           - if: "{{ not is_docked }}"
             then:
               - action: persistent_notification.create
