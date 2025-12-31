@@ -783,7 +783,6 @@ blueprint:
           selector:
             boolean:
           default: true
-          icon: mdi:map-marker-path
 
         task_status_sensor_trigger:
           name: "🔍 Task Status Sensor"
