@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
     **🤖 Dreame Vacuum – Multi-Floor Control**
-    *Version: 0.9.14*
+    *Version: 0.9.15*
 
     A Home Assistant blueprint for controlling Dreame vacuums across multiple floors.
     Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers. **Never care about the right robot settings for seamless multi-floor cleaning again.**
@@ -1202,6 +1202,7 @@ variables:
   # Boolean Evaluations with robust defaults
   is_base_station_map: "{{ current_map_config.has_base_station | default(false) if current_map_config is mapping else (current_map_name == base_station_map) }}"
   is_cleaning: "{{ current_status in cleaning_states }}"
+  is_busy: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') == 'washing' or current_status in cleaning_states }}"
   is_paused: "{{ current_status in paused_states and states(vacuum_entity) != 'docked' }}"
   is_docked: "{{ states(vacuum_entity) == 'docked' }}"
   has_cleaning_sequence: "{{ should_use_cleaning_sequence }}"
@@ -1480,6 +1481,17 @@ actions:
           - condition: template
             value_template: "{{ triggered_function == 'fn_sweep' }}"
         sequence:
+          # Busy check: Ignore trigger if robot is washing or cleaning
+          - if: "{{ is_busy }}"
+            then:
+              - if: "{{ debug_mode }}"
+                then:
+                  - action: persistent_notification.create
+                    data:
+                      title: "⏳ Busy"
+                      message: "{{ now().strftime('%H:%M:%S') }} - fn_sweep ignored"
+              - stop: "Robot busy"
+
           # Disable customized_cleaning if active (enables global cleaning_mode)
           - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
             then:
@@ -1522,6 +1534,17 @@ actions:
           - condition: template
             value_template: "{{ triggered_function == 'fn_mop' }}"
         sequence:
+          # Busy check: Ignore trigger if robot is washing or cleaning
+          - if: "{{ is_busy }}"
+            then:
+              - if: "{{ debug_mode }}"
+                then:
+                  - action: persistent_notification.create
+                    data:
+                      title: "⏳ Busy"
+                      message: "{{ now().strftime('%H:%M:%S') }} - fn_mop ignored"
+              - stop: "Robot busy"
+
           # Disable customized_cleaning if active (enables global cleaning_mode)
           - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
             then:
@@ -1564,6 +1587,17 @@ actions:
           - condition: template
             value_template: "{{ triggered_function == 'fn_start' }}"
         sequence:
+          # Busy check: Only block during washing (pause/resume still works during cleaning)
+          - if: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') == 'washing' }}"
+            then:
+              - if: "{{ debug_mode }}"
+                then:
+                  - action: persistent_notification.create
+                    data:
+                      title: "⏳ Busy"
+                      message: "{{ now().strftime('%H:%M:%S') }} - fn_start ignored (washing)"
+              - stop: "Robot busy (washing)"
+
           - choose:
               # Robot is cleaning → Pause
               - conditions:
@@ -2036,6 +2070,17 @@ actions:
           - condition: template
             value_template: "{{ triggered_function == 'fn_map1' }}"
         sequence:
+          # Busy check - ignore trigger if robot is busy
+          - if: "{{ is_busy }}"
+            then:
+              - if: "{{ debug_mode }}"
+                then:
+                  - action: persistent_notification.create
+                    data:
+                      title: "⏳ Busy"
+                      message: "{{ now().strftime('%H:%M:%S') }} - fn_map1 ignored"
+              - stop: "Robot busy"
+
           # Discard temporary map if exists and auto-discard enabled
           - if: "{{ auto_discard_temp_map and has_temporary_map }}"
             then:
@@ -2069,6 +2114,17 @@ actions:
           - condition: template
             value_template: "{{ triggered_function == 'fn_map2' }}"
         sequence:
+          # Busy check - ignore trigger if robot is busy
+          - if: "{{ is_busy }}"
+            then:
+              - if: "{{ debug_mode }}"
+                then:
+                  - action: persistent_notification.create
+                    data:
+                      title: "⏳ Busy"
+                      message: "{{ now().strftime('%H:%M:%S') }} - fn_map2 ignored"
+              - stop: "Robot busy"
+
           # Discard temporary map if exists and auto-discard enabled
           - if: "{{ auto_discard_temp_map and has_temporary_map }}"
             then:
@@ -2102,6 +2158,17 @@ actions:
           - condition: template
             value_template: "{{ triggered_function == 'fn_map3' }}"
         sequence:
+          # Busy check - ignore trigger if robot is busy
+          - if: "{{ is_busy }}"
+            then:
+              - if: "{{ debug_mode }}"
+                then:
+                  - action: persistent_notification.create
+                    data:
+                      title: "⏳ Busy"
+                      message: "{{ now().strftime('%H:%M:%S') }} - fn_map3 ignored"
+              - stop: "Robot busy"
+
           # Discard temporary map if exists and auto-discard enabled
           - if: "{{ auto_discard_temp_map and has_temporary_map }}"
             then:
