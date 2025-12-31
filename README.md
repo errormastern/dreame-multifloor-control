@@ -25,7 +25,7 @@ A Home Assistant blueprint for controlling Dreame vacuums across multiple floors
 ## 📋 Requirements
 
 - Home Assistant ≥ 2024.10.0
-- [Dreame Vacuum Integration](https://github.com/Tasshack/dreame-vacuum) ≥ v2.0.0b19
+- [Dreame Vacuum Integration](https://github.com/Tasshack/dreame-vacuum) ≥ v2.0.0b21
 - At least one saved map configured
 - Optional: Schedule helpers for time-based automation
 - Optional: Mobile app for notifications

@@ -12,22 +12,17 @@ blueprint:
     ⚙️ Automatically verify and configure optimal robot settings prior to each cleaning cycle
     📅 Per-map schedules with sweep/mop modes (3 maps, 6 schedules total)
     🔔 Notification workflow with action buttons for transport preparation
+    👥 Multi-recipient notifications with presence checking
     ⏭️ Manual control via MQTT, device triggers, state changes, or events
     🏠 Segment-based Map cleaning with configurable repeats
-    🗺️ Auto-discard temporary maps for seamless multi-floor operation
+    ✨ Optional customised cleaning using room settings from Dreame app
     💧 Mop readiness check (mop pad + water tank) with sweep-only fallback
-    🏠 **Auto-Switch-Back to Base Map** after multi-floor cleaning (v0.9.14+)
-
-    **✨ Auto-Switch-Back to Base Map** (v0.9.14+)
-    • Automatically returns to base station map after multi-floor cleaning
-    • Prevents accidental cleaning on wrong map
-    • Smart detection: Only after room cleaning (not washing/drying)
-    • Schedule-safe: Won't interfere with preparation workflows
-    • 20-second safety buffer against accidental triggers
+    🗺️ Auto-discard temporary maps for seamless multi-floor operation
+    🏠 Auto-Switch-Back to Base Map after multi-floor cleaning
 
     **Requirements:**
     • Home Assistant ≥ 2024.10.0
-    • Dreame Vacuum Integration ≥ v2.0.0b19
+    • Dreame Vacuum Integration ≥ v2.0.0b21
     • At least one saved map configured
     • Optional: Schedule helpers for time-based automation
 
