@@ -12,7 +12,7 @@ Configuration reference for Dreame Vacuum Multi-Floor Control blueprint.
 
 ## 🤖 Robot Configuration
 
-![Robot Configuration](images/robot-configuration.png)
+![Robot Configuration](images/robot_configuration.png)
 
 ### 🤖 Vacuum Entity
 
@@ -44,7 +44,7 @@ Time robot moves away from dock before pausing for manual transport.
 
 ## 🏠 Map 1 / Map 2 / Map 3
 
-![Map Configuration](images/map-configuration.png)
+![Map Configuration](images/map_configuration.png)
 
 **Note:** Map names are auto-detected from the integration.
 
