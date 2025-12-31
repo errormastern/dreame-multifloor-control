@@ -82,17 +82,6 @@ blueprint:
       icon: mdi:home-floor-1
       collapsed: true
       input:
-        map1_trigger:
-          name: "🔀 Map Switch Trigger"
-          description: |
-            Trigger to switch to this map.
-
-            **MQTT/Device triggers:** Auto-detected
-            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_map1`
-          selector:
-            trigger:
-          default: []
-
         map_1_cleaning_repeats:
           name: "🔄 Cleaning Repeats"
           description: |
@@ -109,6 +98,17 @@ blueprint:
               mode: slider
               unit_of_measurement: "passes"
           default: 2
+
+        map1_trigger:
+          name: "🔀 Map Switch Trigger"
+          description: |
+            Trigger to switch to this map.
+
+            **MQTT/Device triggers:** Auto-detected
+            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_map1`
+          selector:
+            trigger:
+          default: []
 
         map_1_sweep_schedule:
           name: "📅 Sweep-Only Schedule (Optional)"
@@ -145,17 +145,6 @@ blueprint:
       icon: mdi:home-floor-2
       collapsed: true
       input:
-        map2_trigger:
-          name: "🔀 Map Switch Trigger"
-          description: |
-            Trigger to switch to this map.
-
-            **MQTT/Device triggers:** Auto-detected
-            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_map2`
-          selector:
-            trigger:
-          default: []
-
         map_2_cleaning_repeats:
           name: "🔄 Cleaning Repeats"
           description: |
@@ -172,6 +161,17 @@ blueprint:
               mode: slider
               unit_of_measurement: "passes"
           default: 2
+
+        map2_trigger:
+          name: "🔀 Map Switch Trigger"
+          description: |
+            Trigger to switch to this map.
+
+            **MQTT/Device triggers:** Auto-detected
+            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_map2`
+          selector:
+            trigger:
+          default: []
 
         map_2_sweep_schedule:
           name: "📅 Sweep-Only Schedule (Optional)"
@@ -208,17 +208,6 @@ blueprint:
       icon: mdi:home-floor-3
       collapsed: true
       input:
-        map3_trigger:
-          name: "🔀 Map Switch Trigger"
-          description: |
-            Trigger to switch to this map.
-
-            **MQTT/Device triggers:** Auto-detected
-            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_map3`
-          selector:
-            trigger:
-          default: []
-
         map_3_cleaning_repeats:
           name: "🔄 Cleaning Repeats"
           description: |
@@ -235,6 +224,17 @@ blueprint:
               mode: slider
               unit_of_measurement: "passes"
           default: 2
+
+        map3_trigger:
+          name: "🔀 Map Switch Trigger"
+          description: |
+            Trigger to switch to this map.
+
+            **MQTT/Device triggers:** Auto-detected
+            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_map3`
+          selector:
+            trigger:
+          default: []
 
         map_3_sweep_schedule:
           name: "📅 Sweep-Only Schedule (Optional)"
@@ -271,6 +271,20 @@ blueprint:
       icon: mdi:gesture-tap-button
       collapsed: true
       input:
+        start_trigger:
+          name: "▶️ Smart Start/Pause/Resume Trigger"
+          description: |
+            Intelligent control based on robot status:
+            • Idle → Start cleaning
+            • Cleaning → Pause
+            • Paused → Resume
+
+            **MQTT/Device triggers:** Auto-detected
+            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_start`
+          selector:
+            trigger:
+          default: []
+
         sweep_trigger:
           name: "🧹 Sweep Only Mode Trigger"
           description: |
@@ -293,52 +307,37 @@ blueprint:
             trigger:
           default: []
 
-        start_trigger:
-          name: "▶️ Smart Start/Pause/Resume Trigger"
-          description: |
-            Intelligent control based on robot status:
-            • Idle → Start cleaning
-            • Cleaning → Pause
-            • Paused → Resume
-
-            **MQTT/Device triggers:** Auto-detected
-            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_start`
-          selector:
-            trigger:
-          default: []
-
     # ========================================
-    # SCHEDULED CLEANING NOTIFICATIONS
+    # NOTIFICATION SETTINGS
     # ========================================
-    scheduled_notification_config:
-      name: "Scheduled Cleaning Notifications"
-      description: "Notifications when schedule triggers. Prepare Robot → robot moves → pickup notification follows."
-      icon: mdi:calendar-clock
+    notification_settings:
+      name: "Notification Settings"
+      description: "Configure notifications for scheduled cleaning and pickup events."
+      icon: mdi:bell
       collapsed: true
       input:
-        scheduled_notification_enabled:
+        # --- SHARED SETTINGS ---
+        notification_enabled:
           name: "🔔 Enable Notifications"
           description: |
-            Send notification when schedule triggers on non-base station map.
-            "Prepare Robot" button starts preparation workflow.
+            Send notifications for scheduled cleaning and pickup events.
+            Includes "Prepare Robot" and "Start Cleaning" action buttons.
           selector:
             boolean:
           default: false
 
-        scheduled_notification_persons:
+        notification_persons:
           name: "👤 Persons to Notify"
           description: |
             Select persons to notify. Only persons at home receive notifications.
             Notification service is auto-detected from person's device tracker.
-
-            **Validation:** Person must be home + have valid device tracker
           selector:
             entity:
               domain: person
               multiple: true
           default: []
 
-        scheduled_notification_groups:
+        notification_groups:
           name: "👥 Notification Groups"
           description: |
             Notification groups to notify (no presence check).
@@ -350,34 +349,31 @@ blueprint:
               multiple: true
           default: []
 
+        # --- SCHEDULED CLEANING NOTIFICATIONS ---
         scheduled_notification_title:
-          name: "📝 Title"
+          name: "📅 Schedule Notification Title"
           description: |
-            Notification title (supports Jinja2 templates).
+            Title for scheduled cleaning notifications.
 
-            **Available variables:** `robot_name`, `map_name`, `cleaning_mode_display`,
-            `schedule_name`, `current_time`, `repeat_number`
+            **Variables:** `robot_name`, `map_name`, `cleaning_mode_display`, `current_time`
           selector:
             text:
           default: "Scheduled Cleaning Ready"
 
         scheduled_notification_message:
-          name: "💬 Message"
+          name: "📅 Schedule Notification Message"
           description: |
-            Notification message body (supports Jinja2 templates).
+            Message for scheduled cleaning notifications.
 
-            **Available variables:** `robot_name`, `map_name`, `cleaning_mode_display`,
-            `schedule_name`, `current_time`, `wait_minutes`, `repeat_number`
+            **Variables:** `robot_name`, `map_name`, `cleaning_mode_display`, `current_time`, `repeat_number`
           selector:
             text:
               multiline: true
           default: "{{ robot_name }} is ready for scheduled cleaning on {{ map_name }} ({{ cleaning_mode_display }}). Please prepare the robot."
 
         scheduled_notification_repeat_count:
-          name: "🔁 Repeat Count"
-          description: |
-            How many times to resend notification if user doesn't respond (1-3).
-            Stops when user clicks any button or max repeats reached.
+          name: "📅 Schedule Repeat Count"
+          description: "How many times to resend if no response (1-3)."
           selector:
             number:
               min: 1
@@ -387,10 +383,8 @@ blueprint:
           default: 2
 
         scheduled_notification_repeat_interval:
-          name: "⏱️ Repeat Interval"
-          description: |
-            Wait time before sending next reminder (0-240 minutes).
-            Set to 0 to disable repeats.
+          name: "📅 Schedule Repeat Interval"
+          description: "Minutes between reminder notifications (0 = no repeats)."
           selector:
             number:
               min: 0
@@ -400,7 +394,53 @@ blueprint:
               mode: slider
           default: 15
 
-        scheduled_notification_interruption_level:
+        # --- PICKUP NOTIFICATIONS ---
+        pickup_notification_title:
+          name: "🤖 Pickup Notification Title"
+          description: |
+            Title for pickup notifications (robot ready for transport).
+
+            **Variables:** `robot_name`, `map_name`, `cleaning_mode_display`, `current_time`
+          selector:
+            text:
+          default: "Robot Ready for Transport"
+
+        pickup_notification_message:
+          name: "🤖 Pickup Notification Message"
+          description: |
+            Message for pickup notifications.
+
+            **Variables:** `robot_name`, `map_name`, `cleaning_mode_display`, `current_time`, `repeat_number`
+          selector:
+            text:
+              multiline: true
+          default: "{{ robot_name }} is paused and ready for transport to {{ map_name }}. Please pick up the robot."
+
+        pickup_notification_repeat_count:
+          name: "🤖 Pickup Repeat Count"
+          description: "How many times to resend if robot not started (1-3)."
+          selector:
+            number:
+              min: 1
+              max: 3
+              step: 1
+              mode: slider
+          default: 2
+
+        pickup_notification_repeat_interval:
+          name: "🤖 Pickup Repeat Interval"
+          description: "Minutes between reminder notifications (0 = no repeats)."
+          selector:
+            number:
+              min: 0
+              max: 240
+              step: 5
+              unit_of_measurement: "min"
+              mode: slider
+          default: 10
+
+        # --- iOS SETTINGS (SHARED) ---
+        notification_interruption_level:
           name: "📱 iOS Interruption Level"
           description: |
             Notification priority level for iOS devices.
@@ -420,177 +460,25 @@ blueprint:
                   value: "time-sensitive"
                 - label: "Critical (Always Notify)"
                   value: "critical"
-          default: "active"
-
-        scheduled_notification_sound:
-          name: "🔊 iOS Sound"
-          description: |
-            Sound file name for iOS notifications.
-            Examples: `default`, `none`, or custom sound name
-          selector:
-            text:
-          default: "default"
-
-        scheduled_notification_critical:
-          name: "🚨 iOS Critical Alert"
-          description: |
-            Enable critical alert (bypasses Do Not Disturb and mute switch).
-            Requires special iOS permission. Use only for urgent notifications!
-          selector:
-            boolean:
-          default: false
-
-        scheduled_notification_volume:
-          name: "🔈 iOS Critical Volume"
-          description: |
-            Volume for critical alerts (0.0-1.0).
-            Only applies when critical alert is enabled.
-          selector:
-            number:
-              min: 0.0
-              max: 1.0
-              step: 0.1
-              mode: slider
-          default: 1.0
-
-    # ========================================
-    # PICKUP NOTIFICATIONS
-    # ========================================
-    pickup_notification_config:
-      name: "Pickup Notifications"
-      description: "Notifications when robot is ready for transport. User transports → clicks Start → robot resumes."
-      icon: mdi:robot-vacuum-alert
-      collapsed: true
-      input:
-        pickup_notification_enabled:
-          name: "🔔 Enable Notifications"
-          description: |
-            Send notification when robot is paused and ready for transport.
-            User can start cleaning after placing robot on target floor.
-          selector:
-            boolean:
-          default: false
-
-        pickup_notification_persons:
-          name: "👤 Persons to Notify"
-          description: |
-            Select persons to notify. Only persons at home receive notifications.
-            Notification service is auto-detected from person's device tracker.
-
-            **Validation:** Person must be home + have valid device tracker
-          selector:
-            entity:
-              domain: person
-              multiple: true
-          default: []
-
-        pickup_notification_groups:
-          name: "👥 Notification Groups"
-          description: |
-            Notification groups to notify (no presence check).
-            Enter group names without 'notify.' prefix.
-
-            Example: `family_phones` → calls `notify.family_phones`
-          selector:
-            text:
-              multiple: true
-          default: []
-
-        pickup_notification_title:
-          name: "📝 Title"
-          description: |
-            Notification title (supports Jinja2 templates).
-
-            **Available variables:** `robot_name`, `map_name`, `current_map`,
-            `cleaning_mode_display`, `current_time`, `repeat_number`
-          selector:
-            text:
-          default: "Robot Ready for Transport"
-
-        pickup_notification_message:
-          name: "💬 Message"
-          description: |
-            Notification message body (supports Jinja2 templates).
-
-            **Available variables:** `robot_name`, `map_name`, `current_map`,
-            `cleaning_mode_display`, `current_time`, `wait_minutes`, `repeat_number`
-          selector:
-            text:
-              multiline: true
-          default: "{{ robot_name }} is paused and ready for transport to {{ map_name }}. Please pick up the robot."
-
-        pickup_notification_repeat_count:
-          name: "🔁 Repeat Count"
-          description: |
-            How many times to resend notification if robot not started (1-3).
-            Stops when cleaning resumes or max repeats reached.
-          selector:
-            number:
-              min: 1
-              max: 3
-              step: 1
-              mode: slider
-          default: 2
-
-        pickup_notification_repeat_interval:
-          name: "⏱️ Repeat Interval"
-          description: |
-            Wait time before sending next reminder (0-240 minutes).
-            Set to 0 to disable repeats.
-          selector:
-            number:
-              min: 0
-              max: 240
-              step: 5
-              unit_of_measurement: "min"
-              mode: slider
-          default: 10
-
-        pickup_notification_interruption_level:
-          name: "📱 iOS Interruption Level"
-          description: |
-            Notification priority level for iOS devices.
-
-            • **Passive:** Silent, background only
-            • **Active:** Standard, shows on lock screen
-            • **Time-Sensitive:** Bypasses Focus modes (recommended)
-            • **Critical:** Always notifies, bypasses Do Not Disturb
-          selector:
-            select:
-              options:
-                - label: "Passive (Silent, Background)"
-                  value: "passive"
-                - label: "Active (Standard, Lock Screen)"
-                  value: "active"
-                - label: "Time-Sensitive (Bypass Focus)"
-                  value: "time-sensitive"
-                - label: "Critical (Always Notify)"
-                  value: "critical"
           default: "time-sensitive"
 
-        pickup_notification_sound:
+        notification_sound:
           name: "🔊 iOS Sound"
-          description: |
-            Sound file name for iOS notifications.
-            Examples: `default`, `none`, or custom sound name
+          description: "Sound for iOS notifications (`default`, `none`, or custom)."
           selector:
             text:
           default: "default"
 
-        pickup_notification_critical:
+        notification_critical:
           name: "🚨 iOS Critical Alert"
-          description: |
-            Enable critical alert (bypasses Do Not Disturb and mute switch).
-            Requires special iOS permission. Use only for urgent notifications!
+          description: "Bypass Do Not Disturb and mute switch. Requires iOS permission."
           selector:
             boolean:
           default: false
 
-        pickup_notification_volume:
+        notification_volume:
           name: "🔈 iOS Critical Volume"
-          description: |
-            Volume for critical alerts (0.0-1.0).
-            Only applies when critical alert is enabled.
+          description: "Volume for critical alerts (0.0-1.0)."
           selector:
             number:
               min: 0.0
@@ -669,7 +557,42 @@ blueprint:
           default: true
 
     # ========================================
-    # SECTION F: LOCALIZATION
+    # MAP FUNCTIONS
+    # ========================================
+    map_functions:
+      name: "Map Functions"
+      description: "Automatic map switching and temporary map handling."
+      icon: mdi:map
+      collapsed: true
+      input:
+        auto_switch_to_base_map:
+          name: "🗺️ Auto-Switch-Back to Base Map"
+          description: "Automatically switch back to base station map after room cleaning is completed."
+          selector:
+            boolean:
+          default: true
+
+        task_status_sensor_trigger:
+          name: "🔍 Task Status Sensor"
+          description: "Select task status sensor (e.g., `sensor.{vacuum_name}_task_status`). Leave empty to disable auto-switch."
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+              multiple: false
+          default: []
+
+        auto_discard_temporary_map:
+          name: "🗺️ Auto-Discard Temporary Maps"
+          description: |
+            Automatically discard temporary maps before switching maps.
+            Allows seamless multi-floor operation when robot creates new maps.
+          selector:
+            boolean:
+          default: true
+
+    # ========================================
+    # LOCALIZATION
     # ========================================
     localization_config:
       name: "Localization"
@@ -749,7 +672,7 @@ blueprint:
           default: "Mop pads not installed or water tank empty. Start sweep-only instead?"
 
     # ========================================
-    # SECTION G: ADVANCED SETTINGS
+    # ADVANCED SETTINGS
     # ========================================
     advanced_settings:
       name: "Advanced Settings"
@@ -757,61 +680,6 @@ blueprint:
       icon: mdi:cog
       collapsed: true
       input:
-        # ============================================
-        # AUTO-SWITCH-BACK
-        # ============================================
-        auto_switch_to_base_map:
-          name: "🗺️ Auto-Switch-Back to Base Map"
-          description: |
-            Automatically switch back to base station map after room cleaning is completed.
-
-            **When it triggers:**
-            - Task status changes to 'completed'
-            - Cleaning task was a room/floor cleaning (NOT washing/drying)
-            - Current map is NOT the base station map
-            - NO active schedule preparation workflow
-
-            **Safety features:**
-            - 20-second buffer after schedule preparation
-            - Filters out washing/drying operations
-            - Prevents accidental triggers on brief dock/undock
-
-            **Why useful:**
-            - Always returns to home map after multi-floor cleaning
-            - Avoids accidentally starting cleaning on wrong map
-            - Robot is always ready on base station map
-          selector:
-            boolean:
-          default: true
-
-        task_status_sensor_trigger:
-          name: "🔍 Task Status Sensor"
-          description: "Select task status sensor (e.g., `sensor.{vacuum_name}_task_status`). Leave empty to disable auto-switch."
-          selector:
-            entity:
-              filter:
-                - domain: sensor
-              multiple: false
-          default: []
-
-        # ============================================
-        # MAP HANDLING
-        # ============================================
-        auto_discard_temporary_map:
-          name: "🗺️ Auto-Discard Temporary Maps"
-          description: |
-            Automatically discard temporary maps before switching maps.
-
-            When the robot creates a new map (e.g., after relocation failure),
-            map switching is blocked until the temporary map is saved or discarded.
-            This option automatically discards such maps to allow seamless operation.
-
-            **Disable if:** You want to manually review and save new maps.
-            **Keep enabled:** For fully automated multi-floor operation.
-          selector:
-            boolean:
-          default: true
-
         # ============================================
         # TIMEOUTS
         # ============================================
@@ -1384,22 +1252,14 @@ variables:
 
   current_time: "{{ now().strftime('%H:%M') }}"
 
-  # Notification input imports
-  scheduled_notification_enabled: !input scheduled_notification_enabled
-  scheduled_notification_persons: !input scheduled_notification_persons
-  scheduled_notification_groups: !input scheduled_notification_groups
-  scheduled_notification_interruption_level: !input scheduled_notification_interruption_level
-  scheduled_notification_sound: !input scheduled_notification_sound
-  scheduled_notification_critical: !input scheduled_notification_critical
-  scheduled_notification_volume: !input scheduled_notification_volume
-
-  pickup_notification_enabled: !input pickup_notification_enabled
-  pickup_notification_persons: !input pickup_notification_persons
-  pickup_notification_groups: !input pickup_notification_groups
-  pickup_notification_interruption_level: !input pickup_notification_interruption_level
-  pickup_notification_sound: !input pickup_notification_sound
-  pickup_notification_critical: !input pickup_notification_critical
-  pickup_notification_volume: !input pickup_notification_volume
+  # Notification input imports (shared settings)
+  notification_enabled: !input notification_enabled
+  notification_persons: !input notification_persons
+  notification_groups: !input notification_groups
+  notification_interruption_level: !input notification_interruption_level
+  notification_sound: !input notification_sound
+  notification_critical: !input notification_critical
+  notification_volume: !input notification_volume
 
   # ========================================
   # LOCALIZATION
@@ -2451,7 +2311,7 @@ actions:
             # Non-base station → Send notification immediately
             else:
               # Check if notifications enabled
-              - if: "{{ not scheduled_notification_enabled }}"
+              - if: "{{ not notification_enabled }}"
                 then:
                   - action: persistent_notification.create
                     data:
@@ -2478,7 +2338,7 @@ actions:
                   # If modifying this logic, update pickup_notify_services as well
                   scheduled_notify_services: >
                     {% set ns = namespace(result=[]) %}
-                    {% for person in scheduled_notification_persons %}
+                    {% for person in notification_persons %}
                       {% if is_state(person, 'home') %}
                         {% set trackers = state_attr(person, 'device_trackers') %}
                         {% if trackers %}
@@ -2490,7 +2350,7 @@ actions:
                         {% endif %}
                       {% endif %}
                     {% endfor %}
-                    {% for group in scheduled_notification_groups %}
+                    {% for group in notification_groups %}
                       {% if group and group not in ['', 'unknown', 'unavailable', none] %}
                         {% set ns.result = ns.result + ['notify.' + group] %}
                       {% endif %}
@@ -2531,7 +2391,7 @@ actions:
                                 - action: "SKIP_CLEANING"
                                   title: "{{ skip_button }}"
                               push:
-                                interruption-level: "{{ scheduled_notification_interruption_level }}"
+                                interruption-level: "{{ notification_interruption_level }}"
 
                   - action: persistent_notification.create
                     enabled: "{{ debug_mode | default(false) }}"
@@ -2560,12 +2420,12 @@ actions:
                                 - action: "SKIP_CLEANING"
                                   title: "{{ skip_button }}"
                               push:
-                                interruption-level: "{{ scheduled_notification_interruption_level }}"
+                                interruption-level: "{{ notification_interruption_level }}"
                                 sound: >
-                                  {% if scheduled_notification_critical %}
-                                    {{ {'name': scheduled_notification_sound, 'critical': 1, 'volume': scheduled_notification_volume} }}
+                                  {% if notification_critical %}
+                                    {{ {'name': notification_sound, 'critical': 1, 'volume': notification_volume} }}
                                   {% else %}
-                                    {{ scheduled_notification_sound }}
+                                    {{ notification_sound }}
                                   {% endif %}
 
                   - action: persistent_notification.create
@@ -2858,7 +2718,7 @@ actions:
               entity_id: "switch.{{ vacuum_base_name }}_self_clean"
 
           # Step 12: Send pickup notification
-          - if: "{{ pickup_notification_enabled }}"
+          - if: "{{ notification_enabled }}"
             then:
               - variables:
                   map_name: "{{ notification_target_map_name }}"
@@ -2868,7 +2728,7 @@ actions:
                   # If modifying this logic, update scheduled_notify_services as well
                   pickup_notify_services: >
                     {% set result = [] %}
-                    {% for person in pickup_notification_persons %}
+                    {% for person in notification_persons %}
                       {% if is_state(person, 'home') %}
                         {% set trackers = state_attr(person, 'device_trackers') %}
                         {% if trackers %}
@@ -2880,7 +2740,7 @@ actions:
                         {% endif %}
                       {% endif %}
                     {% endfor %}
-                    {% for group in pickup_notification_groups %}
+                    {% for group in notification_groups %}
                       {% if group and group not in ['', 'unknown', 'unavailable', none] %}
                         {% set result = result + ['notify.' + group] %}
                       {% endif %}
@@ -2901,12 +2761,12 @@ actions:
                             - action: "CANCEL_CLEANING"
                               title: "{{ cancel_cleaning_button }}"
                           push:
-                            interruption-level: "{{ pickup_notification_interruption_level }}"
+                            interruption-level: "{{ notification_interruption_level }}"
                             sound: >
-                              {% if pickup_notification_critical %}
-                                {{ {'name': pickup_notification_sound, 'critical': 1, 'volume': pickup_notification_volume} }}
+                              {% if notification_critical %}
+                                {{ {'name': notification_sound, 'critical': 1, 'volume': notification_volume} }}
                               {% else %}
-                                {{ pickup_notification_sound }}
+                                {{ notification_sound }}
                               {% endif %}
 
           # Debug: Complete
