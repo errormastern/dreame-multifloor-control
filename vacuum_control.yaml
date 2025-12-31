@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
     **🤖 Dreame Vacuum – Multi-Floor Control**
-    *Version: 0.9.15*
+    *Version: 0.9.16*
 
     A Home Assistant blueprint for controlling Dreame vacuums across multiple floors.
     Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers. **Never care about the right robot settings for seamless multi-floor cleaning again.**
@@ -840,16 +840,26 @@ blueprint:
         # ============================================
         # DEBUG
         # ============================================
-        debug_mode:
-          name: "🐛 Debug Mode"
+        debug_level:
+          name: "🐛 Debug Level"
           description: |
-            Show persistent notification with debug info on every trigger.
-            Displays: function, status, map, segments, variables.
+            Control debug notification verbosity.
 
-            Enable for troubleshooting, disable after successful setup.
+            • **Off:** No debug notifications
+            • **Info:** Summary after completion
+            • **Debug:** All steps + summary
+
+            Error/Warning notifications always appear regardless of level.
           selector:
-            boolean:
-          default: false
+            select:
+              options:
+                - label: "Off"
+                  value: "0"
+                - label: "Info (Summary only)"
+                  value: "1"
+                - label: "Debug (All steps)"
+                  value: "2"
+          default: "0"
 
 # ========================================
 # TRIGGER CONFIGURATION
@@ -1225,7 +1235,9 @@ variables:
   mop_start_timeout: !input mop_start_timeout
   moistening_timeout: !input moistening_timeout
   use_segment_service: !input use_segment_service
-  debug_mode: !input debug_mode
+  debug_level: !input debug_level
+  debug_info: "{{ debug_level | int >= 1 }}"
+  debug_verbose: "{{ debug_level | int >= 2 }}"
 
   # ========================================
   # AUTO-SWITCH TO BASE MAP FEATURE
@@ -1382,24 +1394,24 @@ variables:
 # ========================================
 actions:
   # ========================================
-  # Debug Notification (optional)
+  # Debug Notification (Level 2 - Verbose)
   # ========================================
-  - if:
-      - condition: template
-        value_template: "{{ debug_mode | default(false) }}"
+  - if: "{{ debug_verbose }}"
     then:
       - action: persistent_notification.create
         data:
-          title: "🤖 {{ triggered_function }}"
+          title: "⚙️ {{ triggered_function }}"
           message: |
             {{ now().strftime('%H:%M:%S') }}
 
-            **Status:** {{ current_status }}
-            **Map:** {{ current_map_name }}
-            **Mode:** {{ current_mode }}
-            **Cleaning:** {{ is_cleaning }} | **Paused:** {{ is_paused }}
-            **Segments:** {{ map_segments | length }}{% if is_schedule_trigger %}
-            **Schedule:** {{ schedule_trigger_map_name }}{% endif %}
+            ├─ Status: {{ current_status }}
+            ├─ Map: {{ current_map_name }}
+            ├─ Mode: {{ current_mode }}
+            ├─ Cleaning: {{ is_cleaning }}
+            ├─ Paused: {{ is_paused }}
+            └─ Segments: {{ map_segments | length }}{% if is_schedule_trigger %}
+
+            Schedule: {{ schedule_trigger_map_name }}{% endif %}
 
   # ========================================
   # ERROR AND WARNING DETECTION
@@ -1484,48 +1496,60 @@ actions:
           # Busy check: Ignore trigger if robot is washing or cleaning
           - if: "{{ is_busy }}"
             then:
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "⏳ Busy"
-                      message: "{{ now().strftime('%H:%M:%S') }} - fn_sweep ignored"
+              - action: persistent_notification.create
+                data:
+                  title: "⏳ Busy"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    Function: fn_sweep
+                    Status: {{ current_base_status if current_base_status == 'washing' else current_status }}
+
+                    ❌ Automation aborted
               - stop: "Robot busy"
 
+          # Track old values for summary
+          - variables:
+              _old_customized: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+              _old_mode: "{{ states(cleaning_mode_select) | default('unknown') }}"
+
           # Disable customized_cleaning if active (enables global cleaning_mode)
-          - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+          - if: "{{ _old_customized }}"
             then:
               - action: switch.turn_off
-                continue_on_error: true # Don't abort if switch unavailable
+                continue_on_error: true
                 target:
                   entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
               - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
                 timeout: 10
                 continue_on_timeout: false
 
-          # [REMOVED] wait_template for cleaning_mode_select availability
-          # Reason: Hardware-dependent (mop pad), won't resolve by waiting
-          # Service call below has continue_on_error protection
-
+          # Set mode to sweeping
           - action: select.select_option
-            continue_on_error: true # Don't abort if select entity unavailable
+            continue_on_error: true
             target:
               entity_id: "{{ cleaning_mode_select }}"
             data:
               option: "{{ mode_sweeping }}"
 
-          - if:
-              - condition: template
-                value_template: "{{ debug_mode | default(false) }}"
+          # Track new values
+          - variables:
+              _new_customized: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+              _new_mode: "{{ states(cleaning_mode_select) | default('unknown') }}"
+              _customized_changed: "{{ _old_customized and not _new_customized }}"
+              _mode_changed: "{{ _old_mode != _new_mode }}"
+
+          # Summary notification (Level 1+)
+          - if: "{{ debug_info }}"
             then:
               - action: persistent_notification.create
                 data:
-                  title: "⚙️ Mode: Sweep"
+                  title: "✅ Sweep Mode"
                   message: |
-                    **Status:** {{ 'Applied' if has_value(cleaning_mode_select) else '⚠️ Unavailable' }}
-                    **Entity:** {{ cleaning_mode_select }}
-                    **Reason:** {{ 'OK' if has_value(cleaning_mode_select) else 'Mop pad not installed or entity disabled' }}
-                    **Time:** {{ now().strftime('%H:%M:%S') }}
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    ├─ ✔ Customized: {% if _customized_changed %}on → **off**{% else %}off{% endif %}
+                    └─ ✔ Mode: {% if _mode_changed %}{{ _old_mode }} → **{{ _new_mode }}**{% else %}{{ _new_mode }}{% endif %}
 
       # ========================================
       # FUNCTION 2: Sweep + Mop Mode (fn_mop)
@@ -1537,48 +1561,60 @@ actions:
           # Busy check: Ignore trigger if robot is washing or cleaning
           - if: "{{ is_busy }}"
             then:
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "⏳ Busy"
-                      message: "{{ now().strftime('%H:%M:%S') }} - fn_mop ignored"
+              - action: persistent_notification.create
+                data:
+                  title: "⏳ Busy"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    Function: fn_mop
+                    Status: {{ current_base_status if current_base_status == 'washing' else current_status }}
+
+                    ❌ Automation aborted
               - stop: "Robot busy"
 
+          # Track old values for summary
+          - variables:
+              _old_customized: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+              _old_mode: "{{ states(cleaning_mode_select) | default('unknown') }}"
+
           # Disable customized_cleaning if active (enables global cleaning_mode)
-          - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+          - if: "{{ _old_customized }}"
             then:
               - action: switch.turn_off
-                continue_on_error: true # Don't abort if switch unavailable
+                continue_on_error: true
                 target:
                   entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
               - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
                 timeout: 10
                 continue_on_timeout: false
 
-          # [REMOVED] wait_template for cleaning_mode_select availability
-          # Reason: Hardware-dependent (mop pad), won't resolve by waiting
-          # Service call below has continue_on_error protection
-
+          # Set mode to sweeping+mopping
           - action: select.select_option
-            continue_on_error: true # Don't abort if select entity unavailable
+            continue_on_error: true
             target:
               entity_id: "{{ cleaning_mode_select }}"
             data:
               option: "{{ mode_sweeping_mopping }}"
 
-          - if:
-              - condition: template
-                value_template: "{{ debug_mode | default(false) }}"
+          # Track new values
+          - variables:
+              _new_customized: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+              _new_mode: "{{ states(cleaning_mode_select) | default('unknown') }}"
+              _customized_changed: "{{ _old_customized and not _new_customized }}"
+              _mode_changed: "{{ _old_mode != _new_mode }}"
+
+          # Summary notification (Level 1+)
+          - if: "{{ debug_info }}"
             then:
               - action: persistent_notification.create
                 data:
-                  title: "⚙️ Mode: Sweep+Mop"
+                  title: "✅ Mop Mode"
                   message: |
-                    **Status:** {{ 'Applied' if has_value(cleaning_mode_select) else '⚠️ Unavailable' }}
-                    **Entity:** {{ cleaning_mode_select }}
-                    **Reason:** {{ 'OK' if has_value(cleaning_mode_select) else 'Mop pad not installed or entity disabled' }}
-                    **Time:** {{ now().strftime('%H:%M:%S') }}
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    ├─ ✔ Customized: {% if _customized_changed %}on → **off**{% else %}off{% endif %}
+                    └─ ✔ Mode: {% if _mode_changed %}{{ _old_mode }} → **{{ _new_mode }}**{% else %}{{ _new_mode }}{% endif %}
 
       # ========================================
       # FUNCTION 3: Smart Start/Pause/Resume (fn_start)
@@ -1590,12 +1626,16 @@ actions:
           # Busy check: Only block during washing (pause/resume still works during cleaning)
           - if: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') == 'washing' }}"
             then:
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "⏳ Busy"
-                      message: "{{ now().strftime('%H:%M:%S') }} - fn_start ignored (washing)"
+              - action: persistent_notification.create
+                data:
+                  title: "⏳ Busy"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    Function: fn_start
+                    Status: washing
+
+                    ❌ Automation aborted
               - stop: "Robot busy (washing)"
 
           - choose:
@@ -1605,18 +1645,20 @@ actions:
                     value_template: "{{ is_cleaning }}"
                 sequence:
                   - action: vacuum.pause
-                    continue_on_error: true # Don't abort if vacuum unavailable
+                    continue_on_error: true
                     target:
                       entity_id: "{{ vacuum_entity }}"
 
-                  - if:
-                      - condition: template
-                        value_template: "{{ debug_mode | default(false) }}"
+                  # Summary notification (Level 1+)
+                  - if: "{{ debug_info }}"
                     then:
                       - action: persistent_notification.create
                         data:
-                          title: "⏸️ Paused"
-                          message: "{{ now().strftime('%H:%M:%S') }}"
+                          title: "✅ Paused"
+                          message: |
+                            {{ now().strftime('%H:%M:%S') }}
+
+                            └─ ✔ Action: {{ current_status }} → paused
 
               # Robot is paused → Resume
               - conditions:
@@ -1624,18 +1666,20 @@ actions:
                     value_template: "{{ is_paused }}"
                 sequence:
                   - action: vacuum.start
-                    continue_on_error: true # Don't abort if vacuum unavailable
+                    continue_on_error: true
                     target:
                       entity_id: "{{ vacuum_entity }}"
 
-                  - if:
-                      - condition: template
-                        value_template: "{{ debug_mode | default(false) }}"
+                  # Summary notification (Level 1+)
+                  - if: "{{ debug_info }}"
                     then:
                       - action: persistent_notification.create
                         data:
-                          title: "▶️ Resumed"
-                          message: "{{ now().strftime('%H:%M:%S') }}"
+                          title: "✅ Resumed"
+                          message: |
+                            {{ now().strftime('%H:%M:%S') }}
+
+                            └─ ✔ Action: paused → cleaning
 
             # Default: Robot idle → Start Cleaning
             default:
@@ -1645,24 +1689,24 @@ actions:
                       - condition: template
                         value_template: "{{ is_base_station_map }}"
                     sequence:
+                      # Track old values for summary
+                      - variables:
+                          _fn_start: "{{ now().timestamp() }}"
+                          _old_self_clean: "{{ is_state(self_clean_switch, 'on') if has_value(self_clean_switch) else 'n/a' }}"
+                          _old_customized: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+                          _old_sequence: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
+                          _self_clean_changed: false
+                          _customized_changed: false
+                          _sequence_changed: false
+
                       # Ensure self_clean is ALWAYS ON for base station cleaning
-                      # (regardless of sweep-only or sweep+mop mode)
-                      - if:
-                          - condition: template
-                            value_template: "{{ has_value(self_clean_switch) and is_state(self_clean_switch, 'off') }}"
+                      - if: "{{ has_value(self_clean_switch) and is_state(self_clean_switch, 'off') }}"
                         then:
                           - action: switch.turn_on
                             target:
                               entity_id: "{{ self_clean_switch }}"
-
-                          - if:
-                              - condition: template
-                                value_template: "{{ debug_mode | default(false) }}"
-                            then:
-                              - action: persistent_notification.create
-                                data:
-                                  title: "⚙️ Self-Clean On"
-                                  message: "{{ now().strftime('%H:%M:%S') }}"
+                          - variables:
+                              _self_clean_changed: true
 
                       # Enable customized cleaning features (base station map)
                       - if: "{{ has_customized_cleaning and current_mode == mode_sweeping_mopping }}"
@@ -1675,6 +1719,8 @@ actions:
                               - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
                                 timeout: 5
                                 continue_on_timeout: false
+                              - variables:
+                                  _customized_changed: true
 
                       - if: "{{ has_cleaning_sequence }}"
                         then:
@@ -1686,53 +1732,62 @@ actions:
                               - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
                                 timeout: 5
                                 continue_on_timeout: false
+                              - variables:
+                                  _sequence_changed: true
 
-                      - if:
-                          - condition: template
-                            value_template: "{{ use_segment_service and has_segments }}"
+                      # Start cleaning
+                      - variables:
+                          _use_segments: "{{ use_segment_service and has_segments }}"
+
+                      - if: "{{ _use_segments }}"
                         then:
                           - action: dreame_vacuum.vacuum_clean_segment
-                            continue_on_error: true # Don't abort if vacuum unavailable
+                            continue_on_error: true
                             target:
                               entity_id: "{{ vacuum_entity }}"
                             data:
                               segments: "{{ map_segments }}"
                               repeats: "{{ repeats }}"
-
-                          - if:
-                              - condition: template
-                                value_template: "{{ debug_mode | default(false) }}"
-                            then:
-                              - action: persistent_notification.create
-                                data:
-                                  title: "▶️ Start (Segments)"
-                                  message: |
-                                    {{ now().strftime('%H:%M:%S') }}
-
-                                    **Map:** {{ current_map_name }}
-                                    **Segments:** {{ map_segments | length }}
-                                    **Repeats:** {{ repeats }}
                         else:
                           - action: vacuum.start
                             target:
                               entity_id: "{{ vacuum_entity }}"
 
-                          - if:
-                              - condition: template
-                                value_template: "{{ debug_mode | default(false) }}"
-                            then:
-                              - action: persistent_notification.create
-                                data:
-                                  title: "▶️ Start (Full)"
-                                  message: |
-                                    {{ now().strftime('%H:%M:%S') }}
+                      # Summary notification (Level 1+)
+                      - if: "{{ debug_info }}"
+                        then:
+                          - action: persistent_notification.create
+                            data:
+                              title: "✅ Start Complete"
+                              message: |
+                                {{ now().strftime('%H:%M:%S') }}
 
-                                    **Map:** {{ current_map_name }}
+                                {% if has_value(self_clean_switch) %}├─ ✔ Self-Clean: {% if _self_clean_changed %}off → **on**{% else %}on{% endif %}
+                                {% endif %}{% if has_customized_cleaning %}├─ ✔ Customized: {% if _customized_changed %}off → **on**{% else %}{{ 'on' if is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') else 'off' }}{% endif %}
+                                {% endif %}{% if has_cleaning_sequence %}├─ ✔ Sequence: {% if _sequence_changed %}off → **on**{% else %}{{ 'on' if is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') else 'off' }}{% endif %}
+                                {% endif %}└─ ✔ Start: {% if _use_segments %}{{ map_segments | length }} segments{% else %}full map{% endif %}
+
+                                Map: {{ current_map_name }}
+                                Mode: {{ current_mode | replace('_', ' ') | title }}
+                                Duration: {{ ((now().timestamp() - _fn_start) | round(1)) }}s
 
                 # On other map → Start and pause (for manual transport)
                 default:
+                  # Initialize tracking variables
+                  - variables:
+                      _fn_start: "{{ now().timestamp() }}"
+                      _is_mop_mode: "{{ current_mode == mode_sweeping_mopping }}"
+                      _old_customized: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+                      _old_sequence: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
+                      _old_self_clean: "{{ is_state(self_clean_switch, 'on') if has_value(self_clean_switch) else false }}"
+                      _stopped_drying: false
+                      _wash_duration: 0
+                      _customized_changed: false
+                      _sequence_changed: false
+                      _self_clean_changed: false
+
                   # Mop readiness check for smart start (non-base station)
-                  - if: "{{ current_mode == mode_sweeping_mopping and not mop_ready }}"
+                  - if: "{{ _is_mop_mode and not mop_ready }}"
                     then:
                       - action: persistent_notification.create
                         data:
@@ -1740,231 +1795,122 @@ actions:
                           message: |
                             {{ now().strftime('%H:%M:%S') }}
 
-                            **Mop Pad:** {{ mop_pad_status }}
-                            **Water:** {{ water_warning_status }}
+                            Mop Pad: {{ mop_pad_status }}
+                            Water: {{ water_warning_status }}
+
+                            ❌ Automation aborted
                           notification_id: "mop_not_ready_{{ vacuum_base_name }}"
                       - stop: "Mop not ready"
                         error: true
 
                   # Sweep+Mop mode: Prepare base station for mop washing
-                  # For sweep-only, self_clean stays OFF (no moistening needed)
-                  - if:
-                      - condition: template
-                        value_template: "{{ current_mode == mode_sweeping_mopping }}"
+                  - if: "{{ _is_mop_mode }}"
                     then:
-                      # ALWAYS check and stop drying first (2h process must be aborted for immediate start)
-                      - if:
-                          - condition: template
-                            value_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') == 'drying' }}"
+                      # Stop drying if active
+                      - if: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') == 'drying' }}"
                         then:
-                          - if:
-                              - condition: template
-                                value_template: "{{ debug_mode | default(false) }}"
-                            then:
-                              - action: persistent_notification.create
-                                data:
-                                  title: "🛑 Stop Drying"
-                                  message: "{{ now().strftime('%H:%M:%S') }}"
-
                           - action: button.press
-                            continue_on_error: true # Don't abort if button unavailable
+                            continue_on_error: true
                             target:
                               entity_id: "{{ stop_drying_button }}"
-
                           - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') != 'drying' }}"
                             timeout: 10
                             continue_on_timeout: true
+                          - variables:
+                              _stopped_drying: true
 
-                          - if:
-                              - condition: template
-                                value_template: "{{ debug_mode | default(false) }}"
-                            then:
-                              - action: persistent_notification.create
-                                data:
-                                  title: "✅ Drying Stopped"
-                                  message: "{{ now().strftime('%H:%M:%S') }}"
-
-                      # Start manual mop washing (always trigger in sweep+mop mode)
+                      # Start manual mop washing
+                      - variables:
+                          _wash_start: "{{ now().timestamp() }}"
                       - action: button.press
-                        continue_on_error: true # Don't abort if button unavailable
+                        continue_on_error: true
                         target:
                           entity_id: "{{ self_clean_button }}"
 
-                      - if:
-                          - condition: template
-                            value_template: "{{ debug_mode | default(false) }}"
-                        then:
-                          - action: persistent_notification.create
-                            data:
-                              title: "💧 Manual Wash"
-                              message: "{{ now().strftime('%H:%M:%S') }}"
-
-                  # Skip start if delay=0 (keep robot docked)
-                  - if:
-                      - condition: template
-                        value_template: "{{ pause_delay_after_undock == 0 }}"
-                    then:
-                      - if:
-                          - condition: template
-                            value_template: "{{ debug_mode | default(false) }}"
-                        then:
-                          - action: persistent_notification.create
-                            data:
-                              title: "⏸️ Skipped"
-                              message: |
-                                {{ now().strftime('%H:%M:%S') }}
-
-                                **Delay:** 0s
-                      - stop: "Delay is 0, robot stays docked"
-
-                  # Initialize timing variables
-                  - variables:
-                      timing_start: "{{ now().timestamp() }}"
-                      timing_start_washing: null
-                      timing_start_delay: null
-                      timeout_step: null
-
-                  # Sweep+Mop: Wait for washing to complete BEFORE starting
-                  - if:
-                      - condition: template
-                        value_template: "{{ current_mode == mode_sweeping_mopping }}"
-                    then:
-                      - variables:
-                          timing_start_washing: "{{ now().timestamp() }}"
-
-                      - if:
-                          - condition: template
-                            value_template: "{{ debug_mode | default(false) }}"
-                        then:
-                          - action: persistent_notification.create
-                            data:
-                              title: "💧 Washing"
-                              message: "{{ now().strftime('%H:%M:%S') }}"
-
-                      # Wait for washing status to appear
+                      # Wait for washing to complete
                       - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') == 'washing' }}"
                         timeout:
                           seconds: "{{ mop_start_timeout }}"
                         continue_on_timeout: true
-
-                      # Wait for washing status to end
                       - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') != 'washing' }}"
                         timeout:
                           seconds: "{{ moistening_timeout }}"
                         continue_on_timeout: true
-
                       - variables:
-                          timing_end_washing: "{{ now().timestamp() }}"
-                          duration_washing: "{{ (timing_end_washing - timing_start_washing) | round(1) }}"
-                          timeout_step: "{{ 'washing' if not wait.completed and timeout_step is none else timeout_step }}"
-                          self_wash_base_status_entity: "sensor.{{ vacuum_base_name }}_self_wash_base_status"
-                          current_base_status: "{{ states(self_wash_base_status_entity) if has_value(self_wash_base_status_entity) else 'unknown' }}"
+                          _wash_duration: "{{ (now().timestamp() - _wash_start) | round(0) | int }}"
+                          _current_base_status: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') }}"
 
-                      - if:
-                          - condition: template
-                            value_template: "{{ debug_mode | default(false) }}"
+                      # Force-stop if timeout and still washing/drying
+                      - if: "{{ not wait.completed and _current_base_status in ['washing', 'drying'] }}"
                         then:
-                          - action: persistent_notification.create
-                            data:
-                              title: "💧 Wash Done"
-                              message: |
-                                {{ now().strftime('%H:%M:%S') }}
-
-                                **Duration:** {{ duration_washing }}s / {{ moistening_timeout }}s (Timeout){{ ' ⚠️' if not wait.completed else '' }}
-
-                      # Force-stop washing/drying if timeout occurred and base still active
-                      - if: "{{ not wait.completed and current_base_status in ['washing', 'drying'] }}"
-                        then:
-                          - if: "{{ debug_mode | default(false) }}"
-                            then:
-                              - action: persistent_notification.create
-                                data:
-                                  title: "⚠️ Force Stop"
-                                  message: |
-                                    {{ now().strftime('%H:%M:%S') }}
-
-                                    **Status:** {{ current_base_status }}
-
-                          # Stop washing if still washing (toggle button in v2.0.0b21+)
-                          - if: "{{ current_base_status == 'washing' }}"
+                          - if: "{{ _current_base_status == 'washing' }}"
                             then:
                               - action: button.press
                                 target:
                                   entity_id: "button.{{ vacuum_base_name }}_self_clean"
                                 continue_on_error: true
-
-                          # Stop drying if still drying (toggle button in v2.0.0b21+)
-                          - if: "{{ current_base_status == 'drying' }}"
+                          - if: "{{ _current_base_status == 'drying' }}"
                             then:
                               - action: button.press
                                 target:
                                   entity_id: "button.{{ vacuum_base_name }}_manual_drying"
                                 continue_on_error: true
-
                           - delay:
                               seconds: 3
 
-                  # Enable customized cleaning features (other map - after washing, before start)
-                  - if: "{{ has_customized_cleaning and current_mode == mode_sweeping_mopping }}"
+                  # Skip start if delay=0 (keep robot docked)
+                  - if: "{{ pause_delay_after_undock == 0 }}"
                     then:
-                      - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
+                      - if: "{{ debug_info }}"
                         then:
-                          - action: switch.turn_on
-                            target:
-                              entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-                          - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-                            timeout: 5
-                            continue_on_timeout: false
+                          - action: persistent_notification.create
+                            data:
+                              title: "✅ Skipped (delay=0)"
+                              message: |
+                                {{ now().strftime('%H:%M:%S') }}
 
-                  - if: "{{ has_cleaning_sequence }}"
+                                └─ ✔ Status: docked (no start)
+                      - stop: "Delay is 0, robot stays docked"
+
+                  # Enable customized cleaning features
+                  - if: "{{ has_customized_cleaning and _is_mop_mode and not _old_customized }}"
                     then:
-                      - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-                        then:
-                          - action: switch.turn_on
-                            target:
-                              entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-                          - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                            timeout: 5
-                            continue_on_timeout: false
+                      - action: switch.turn_on
+                        target:
+                          entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
+                      - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+                        timeout: 5
+                        continue_on_timeout: false
+                      - variables:
+                          _customized_changed: true
+
+                  - if: "{{ has_cleaning_sequence and not _old_sequence }}"
+                    then:
+                      - action: switch.turn_on
+                        target:
+                          entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
+                      - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
+                        timeout: 5
+                        continue_on_timeout: false
+                      - variables:
+                          _sequence_changed: true
 
                   # Disable self_clean BEFORE start (prevent auto-return to station)
-                  - if:
-                      - condition: template
-                        value_template: "{{ has_value(self_clean_switch) and is_state(self_clean_switch, 'on') }}"
+                  - if: "{{ has_value(self_clean_switch) and _old_self_clean }}"
                     then:
                       - action: switch.turn_off
                         target:
                           entity_id: "{{ self_clean_switch }}"
+                      - variables:
+                          _self_clean_changed: true
 
-                      - if:
-                          - condition: template
-                            value_template: "{{ debug_mode | default(false) }}"
-                        then:
-                          - action: persistent_notification.create
-                            data:
-                              title: "⚙️ Self-Clean Off"
-                              message: "{{ now().strftime('%H:%M:%S') }}"
-
-                  # Start cleaning (both sweep-only and sweep+mop)
-                  - if:
-                      - condition: template
-                        value_template: "{{ debug_mode | default(false) }}"
-                    then:
-                      - action: persistent_notification.create
-                        data:
-                          title: "▶️ Start"
-                          message: |
-                            {{ now().strftime('%H:%M:%S') }}
-
-                            **Mode:** {{ current_mode | replace('_', ' ') | title }}
-                            **Map:** {{ current_map_name }}
-
-                  - if:
-                      - condition: template
-                        value_template: "{{ use_segment_service and has_segments }}"
+                  # Start cleaning
+                  - variables:
+                      _use_segments: "{{ use_segment_service and has_segments }}"
+                  - if: "{{ _use_segments }}"
                     then:
                       - action: dreame_vacuum.vacuum_clean_segment
-                        continue_on_error: true # Don't abort if vacuum unavailable
+                        continue_on_error: true
                         target:
                           entity_id: "{{ vacuum_entity }}"
                         data:
@@ -1972,96 +1918,51 @@ actions:
                           repeats: "{{ repeats }}"
                     else:
                       - action: vacuum.start
-                        continue_on_error: true # Don't abort if vacuum unavailable
+                        continue_on_error: true
                         target:
                           entity_id: "{{ vacuum_entity }}"
 
-                  # Wait for robot to actually start cleaning (verify state change)
+                  # Wait for robot to start cleaning
                   - variables:
-                      timing_start_cleaning_wait: "{{ now().timestamp() }}"
                       expected_cleaning_states: >
-                        {% if current_mode == mode_sweeping %}
-                          ['sweeping']
-                        {% elif current_mode == mode_sweeping_mopping %}
-                          ['sweeping_and_mopping', 'mopping']
-                        {% else %}
-                          ['sweeping', 'mopping', 'sweeping_and_mopping']
-                        {% endif %}
-
-                  - wait_template: >
-                      {{ states('sensor.' ~ vacuum_base_name ~ '_state') in expected_cleaning_states }}
+                        {% if current_mode == mode_sweeping %}['sweeping']
+                        {% elif current_mode == mode_sweeping_mopping %}['sweeping_and_mopping', 'mopping']
+                        {% else %}['sweeping', 'mopping', 'sweeping_and_mopping']{% endif %}
+                  - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_state') in expected_cleaning_states }}"
                     timeout: 30
                     continue_on_timeout: false
 
-                  - variables:
-                      timing_end_cleaning_wait: "{{ now().timestamp() }}"
-                      duration_cleaning_wait: "{{ (timing_end_cleaning_wait - timing_start_cleaning_wait) | round(1) }}"
-                      timeout_step: "{{ 'cleaning_wait' if not wait.completed and timeout_step is none else timeout_step }}"
-
-                  - if:
-                      - condition: template
-                        value_template: "{{ debug_mode | default(false) }}"
-                    then:
-                      - action: persistent_notification.create
-                        data:
-                          title: "✅ Cleaning Active"
-                          message: |
-                            {{ now().strftime('%H:%M:%S') }}
-
-                            **Wait:** {{ duration_cleaning_wait }}s / 30s (Timeout)
-
                   # Delay to allow robot to move away from station
-                  - variables:
-                      timing_start_delay: "{{ now().timestamp() }}"
-
-                  - if:
-                      - condition: template
-                        value_template: "{{ debug_mode | default(false) }}"
-                    then:
-                      - action: persistent_notification.create
-                        data:
-                          title: "⏱️ Delay"
-                          message: |
-                            {{ now().strftime('%H:%M:%S') }}
-
-                            **Duration:** {{ pause_delay_after_undock }}s
-
                   - delay:
                       seconds: "{{ pause_delay_after_undock }}"
 
-                  - variables:
-                      timing_end_delay: "{{ now().timestamp() }}"
-                      duration_delay: "{{ (timing_end_delay - timing_start_delay) | round(1) }}"
-
                   # Pause for manual transport
                   - action: vacuum.pause
-                    continue_on_error: true # Don't abort if vacuum unavailable
+                    continue_on_error: true
                     target:
                       entity_id: "{{ vacuum_entity }}"
 
-                  - if:
-                      - condition: template
-                        value_template: "{{ debug_mode | default(false) }}"
+                  # Summary notification (Level 1+)
+                  - if: "{{ debug_info }}"
                     then:
                       - action: persistent_notification.create
                         data:
-                          title: "⏸️ Paused"
+                          title: "✅ Start Complete"
                           message: |
                             {{ now().strftime('%H:%M:%S') }}
 
-                            **Map:** {{ current_map_name }}
+                            {% if _stopped_drying %}├─ ✔ Stop Drying: idle
+                            {% endif %}{% if _is_mop_mode %}├─ ✔ Wash: {{ _wash_duration }}s
+                            {% endif %}{% if has_customized_cleaning %}├─ ✔ Customized: {% if _customized_changed %}off → **on**{% else %}{{ 'on' if is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') else 'off' }}{% endif %}
+                            {% endif %}{% if has_cleaning_sequence %}├─ ✔ Sequence: {% if _sequence_changed %}off → **on**{% else %}{{ 'on' if is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') else 'off' }}{% endif %}
+                            {% endif %}{% if has_value(self_clean_switch) %}├─ ✔ Self-Clean: {% if _self_clean_changed %}on → **off**{% else %}off{% endif %}
+                            {% endif %}├─ ✔ Start: {{ states('sensor.' ~ vacuum_base_name ~ '_state') }}
+                            ├─ ✔ Delay: {{ pause_delay_after_undock }}s
+                            └─ ✔ Pause: paused
 
-                      # Timing Summary
-                      - action: persistent_notification.create
-                        data:
-                          title: "📊 Summary"
-                          message: |
-                            {{ now().strftime('%H:%M:%S') }}
-
-                            {% if timing_start_washing is not none %}**Wash:** {{ duration_washing }}s / {{ moistening_timeout }}s (Timeout){{ ' ⚠️' if timeout_step == 'washing' else '' }}
-                            {% endif %}**Wait:** {{ duration_cleaning_wait }}s / 30s (Timeout)
-                            **Delay:** {{ duration_delay }}s / {{ pause_delay_after_undock }}s (Delay)
-                            **Total:** {{ (now().timestamp() - timing_start) | round(1) }}s
+                            Map: {{ current_map_name }}
+                            Mode: {{ current_mode | replace('_', ' ') | title }}
+                            Duration: {{ ((now().timestamp() - _fn_start) | round(1)) }}s
 
       # ========================================
       # FUNCTION 4: Map 1 Switch (fn_map1)
@@ -2073,16 +1974,25 @@ actions:
           # Busy check - ignore trigger if robot is busy
           - if: "{{ is_busy }}"
             then:
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "⏳ Busy"
-                      message: "{{ now().strftime('%H:%M:%S') }} - fn_map1 ignored"
+              - action: persistent_notification.create
+                data:
+                  title: "⏳ Busy"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    Function: fn_map1
+                    Status: {{ current_base_status if current_base_status == 'washing' else current_status }}
+
+                    ❌ Automation aborted
               - stop: "Robot busy"
 
+          # Track old values
+          - variables:
+              _old_map: "{{ states(selected_map_select) | default('unknown') }}"
+              _had_temp_map: "{{ auto_discard_temp_map and has_temporary_map }}"
+
           # Discard temporary map if exists and auto-discard enabled
-          - if: "{{ auto_discard_temp_map and has_temporary_map }}"
+          - if: "{{ _had_temp_map }}"
             then:
               - action: dreame_vacuum.vacuum_discard_temporary_map
                 continue_on_error: true
@@ -2092,20 +2002,23 @@ actions:
                   seconds: 2
 
           - action: select.select_option
-            continue_on_error: true # Don't abort if select entity unavailable
+            continue_on_error: true
             target:
               entity_id: "{{ selected_map_select }}"
             data:
               option: "{{ map_1_name }}"
 
-          - if:
-              - condition: template
-                value_template: "{{ debug_mode | default(false) }}"
+          # Summary notification (Level 1+)
+          - if: "{{ debug_info }}"
             then:
               - action: persistent_notification.create
                 data:
-                  title: "🗺️ {{ map_1_name }}"
-                  message: "{{ now().strftime('%H:%M:%S') }}"
+                  title: "✅ Map 1"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    {% if _had_temp_map %}├─ ✔ Discard Temp: yes
+                    └─ ✔ Map: {{ _old_map }} → {{ map_1_name }}{% else %}└─ ✔ Map: {{ _old_map }} → {{ map_1_name }}{% endif %}
 
       # ========================================
       # FUNCTION 5: Map 2 Switch (fn_map2)
@@ -2117,16 +2030,25 @@ actions:
           # Busy check - ignore trigger if robot is busy
           - if: "{{ is_busy }}"
             then:
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "⏳ Busy"
-                      message: "{{ now().strftime('%H:%M:%S') }} - fn_map2 ignored"
+              - action: persistent_notification.create
+                data:
+                  title: "⏳ Busy"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    Function: fn_map2
+                    Status: {{ current_base_status if current_base_status == 'washing' else current_status }}
+
+                    ❌ Automation aborted
               - stop: "Robot busy"
 
+          # Track old values
+          - variables:
+              _old_map: "{{ states(selected_map_select) | default('unknown') }}"
+              _had_temp_map: "{{ auto_discard_temp_map and has_temporary_map }}"
+
           # Discard temporary map if exists and auto-discard enabled
-          - if: "{{ auto_discard_temp_map and has_temporary_map }}"
+          - if: "{{ _had_temp_map }}"
             then:
               - action: dreame_vacuum.vacuum_discard_temporary_map
                 continue_on_error: true
@@ -2136,20 +2058,23 @@ actions:
                   seconds: 2
 
           - action: select.select_option
-            continue_on_error: true # Don't abort if select entity unavailable
+            continue_on_error: true
             target:
               entity_id: "{{ selected_map_select }}"
             data:
               option: "{{ map_2_name }}"
 
-          - if:
-              - condition: template
-                value_template: "{{ debug_mode | default(false) }}"
+          # Summary notification (Level 1+)
+          - if: "{{ debug_info }}"
             then:
               - action: persistent_notification.create
                 data:
-                  title: "🗺️ {{ map_2_name }}"
-                  message: "{{ now().strftime('%H:%M:%S') }}"
+                  title: "✅ Map 2"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    {% if _had_temp_map %}├─ ✔ Discard Temp: yes
+                    └─ ✔ Map: {{ _old_map }} → {{ map_2_name }}{% else %}└─ ✔ Map: {{ _old_map }} → {{ map_2_name }}{% endif %}
 
       # ========================================
       # FUNCTION 6: Map 3 Switch (fn_map3)
@@ -2161,16 +2086,25 @@ actions:
           # Busy check - ignore trigger if robot is busy
           - if: "{{ is_busy }}"
             then:
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "⏳ Busy"
-                      message: "{{ now().strftime('%H:%M:%S') }} - fn_map3 ignored"
+              - action: persistent_notification.create
+                data:
+                  title: "⏳ Busy"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    Function: fn_map3
+                    Status: {{ current_base_status if current_base_status == 'washing' else current_status }}
+
+                    ❌ Automation aborted
               - stop: "Robot busy"
 
+          # Track old values
+          - variables:
+              _old_map: "{{ states(selected_map_select) | default('unknown') }}"
+              _had_temp_map: "{{ auto_discard_temp_map and has_temporary_map }}"
+
           # Discard temporary map if exists and auto-discard enabled
-          - if: "{{ auto_discard_temp_map and has_temporary_map }}"
+          - if: "{{ _had_temp_map }}"
             then:
               - action: dreame_vacuum.vacuum_discard_temporary_map
                 continue_on_error: true
@@ -2180,20 +2114,23 @@ actions:
                   seconds: 2
 
           - action: select.select_option
-            continue_on_error: true # Don't abort if select entity unavailable
+            continue_on_error: true
             target:
               entity_id: "{{ selected_map_select }}"
             data:
               option: "{{ map_3_name }}"
 
-          - if:
-              - condition: template
-                value_template: "{{ debug_mode | default(false) }}"
+          # Summary notification (Level 1+)
+          - if: "{{ debug_info }}"
             then:
               - action: persistent_notification.create
                 data:
-                  title: "🗺️ {{ map_3_name }}"
-                  message: "{{ now().strftime('%H:%M:%S') }}"
+                  title: "✅ Map 3"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    {% if _had_temp_map %}├─ ✔ Discard Temp: yes
+                    └─ ✔ Map: {{ _old_map }} → {{ map_3_name }}{% else %}└─ ✔ Map: {{ _old_map }} → {{ map_3_name }}{% endif %}
 
       # ========================================
       # SCHEDULE-TRIGGERED CLEANING FUNCTIONS
@@ -2239,18 +2176,19 @@ actions:
           - if: >
               {{ states(error_entity) not in ['no_error', 'unknown', 'unavailable', 'none'] }}
             then:
-              - if: "{{ debug_mode }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      title: "⚠️ Schedule Aborted - Robot Error"
-                      message: |
-                        {{ now().strftime('%H:%M:%S') }}
+              # Error notifications always show (regardless of debug level)
+              - action: persistent_notification.create
+                data:
+                  title: "⚠️ Schedule Failed"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
 
-                        **Map:** {{ target_map_name }}
-                        **Mode:** {{ 'Mop' if _is_mop else 'Sweep' }}
-                        **Error:** {{ error_message }}
-                      notification_id: "schedule_error_{{ vacuum_base_name }}"
+                    ├─ ⚠️ Error: {{ error_message }}
+                    └─ ○ Start
+
+                    ❌ Automation aborted
+                    Schedule: {{ schedule_label }}
+                  notification_id: "schedule_error_{{ vacuum_base_name }}"
               - stop: "Schedule aborted: Robot error {{ error_message }}"
                 error: true
 
@@ -2262,27 +2200,35 @@ actions:
           # CHECK 3: Conflict check
           - if: "{{ schedule_conflict_detected }}"
             then:
-              - action: persistent_notification.create
-                enabled: "{{ debug_mode | default(false) }}"
-                data:
-                  title: "⚠️ Conflict"
-                  message: |
-                    {{ now().strftime('%H:%M:%S') }}
+              - if: "{{ debug_info }}"
+                then:
+                  - action: persistent_notification.create
+                    data:
+                      title: "⏳ Schedule Conflict"
+                      message: |
+                        {{ now().strftime('%H:%M:%S') }}
 
-                    **Schedule:** {{ schedule_label }}
+                        Schedule: {{ schedule_label }}
+
+                        ❌ Automation aborted
               - stop: "Schedule conflict"
                 error: true
 
           # Dock check
           - if: "{{ not is_docked }}"
             then:
+              # Error notifications always show
               - action: persistent_notification.create
                 data:
-                  title: "⚠️ Not Docked"
+                  title: "⚠️ Schedule Failed"
                   message: |
                     {{ now().strftime('%H:%M:%S') }}
 
-                    **Schedule:** {{ schedule_label }}
+                    ├─ ⚠️ Dock: not docked
+                    └─ ○ Start
+
+                    ❌ Automation aborted
+                    Schedule: {{ schedule_label }}
                   notification_id: "schedule_dock_error_{{ vacuum_base_name }}"
               - stop: "Robot not docked, cannot start scheduled cleaning"
                 error: true
@@ -2290,6 +2236,14 @@ actions:
           # Base station map → Prepare and start immediately
           - if: "{{ target_map_config.has_base_station }}"
             then:
+              # Track old values for summary
+              - variables:
+                  _fn_start: "{{ now().timestamp() }}"
+                  _old_customized: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+                  _old_mode: "{{ states(cleaning_mode_select) | default('unknown') }}"
+                  _old_sequence: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
+                  _old_map: "{{ states(selected_map_select) | default('unknown') }}"
+
               # Disable customized_cleaning if active
               - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
                 then:
@@ -2366,28 +2320,51 @@ actions:
                     target:
                       entity_id: "{{ vacuum_entity }}"
 
-              - action: persistent_notification.create
-                enabled: "{{ debug_mode | default(false) }}"
-                data:
-                  title: "📅 {{ schedule_label }}"
-                  message: |
-                    {{ now().strftime('%H:%M:%S') }}
+              # Track new values for summary
+              - variables:
+                  _new_customized: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+                  _new_mode: "{{ states(cleaning_mode_select) | default('unknown') }}"
+                  _new_sequence: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
+                  _customized_changed: "{{ _old_customized != _new_customized }}"
+                  _mode_changed: "{{ _old_mode != _new_mode }}"
+                  _sequence_changed: "{{ _old_sequence != _new_sequence }}"
+                  _map_changed: "{{ _old_map != target_map_name }}"
 
-                    **Map:** {{ target_map_name }}
+              # Summary notification (Level 1+)
+              - if: "{{ debug_info }}"
+                then:
+                  - action: persistent_notification.create
+                    data:
+                      title: "✅ Schedule Complete"
+                      message: |
+                        {{ now().strftime('%H:%M:%S') }}
+
+                        {% if has_customized_cleaning %}├─ ✔ Customized: {% if _customized_changed %}on → **off**{% else %}off{% endif %}
+                        {% endif %}{% if has_cleaning_sequence %}├─ ✔ Sequence: {% if _sequence_changed %}off → **on**{% else %}on{% endif %}
+                        {% endif %}├─ ✔ Mode: {% if _mode_changed %}{{ _old_mode }} → **{{ _new_mode }}**{% else %}{{ _new_mode }}{% endif %}
+                        ├─ ✔ Map: {% if _map_changed %}{{ _old_map }} → **{{ target_map_name }}**{% else %}{{ target_map_name }}{% endif %}
+                        └─ ✔ Start: {{ 'segments' if use_segment_service and has_segments else 'vacuum.start' }}
+
+                        Schedule: {{ schedule_label }}
+                        Duration: {{ ((now().timestamp() - _fn_start) | round(1)) }}s
 
             # Non-base station → Send notification immediately
             else:
               # Check if notifications enabled
               - if: "{{ not notification_enabled }}"
                 then:
+                  # Error notifications always show
                   - action: persistent_notification.create
                     data:
-                      title: "⚠️ Config Error"
+                      title: "⚠️ Schedule Failed"
                       message: |
                         {{ now().strftime('%H:%M:%S') }}
 
-                        **Map:** {{ target_map_name }}
-                        **Issue:** No base station
+                        ├─ ⚠️ Config: notifications disabled
+                        └─ ○ Notify
+
+                        ❌ Automation aborted
+                        Schedule: {{ schedule_label }} (no base station)
                       notification_id: "schedule_config_error_{{ vacuum_base_name }}"
                   - stop: "Scheduled notification required but disabled"
                     error: true
@@ -2428,13 +2405,18 @@ actions:
               # Check if any notification recipients available
               - if: "{{ scheduled_notify_services | length == 0 }}"
                 then:
+                  # Error notifications always show
                   - action: persistent_notification.create
                     data:
-                      title: "⚠️ No Recipients"
+                      title: "⚠️ Schedule Failed"
                       message: |
                         {{ now().strftime('%H:%M:%S') }}
 
-                        **Schedule:** {{ schedule_label }}
+                        ├─ ⚠️ Recipients: none available
+                        └─ ○ Notify
+
+                        ❌ Automation aborted
+                        Schedule: {{ schedule_label }}
                       notification_id: "schedule_no_recipients_{{ vacuum_base_name }}"
                   - stop: "No notification recipients available"
                     error: true
@@ -2460,15 +2442,19 @@ actions:
                               push:
                                 interruption-level: "{{ notification_interruption_level }}"
 
-                  - action: persistent_notification.create
-                    enabled: "{{ debug_mode | default(false) }}"
-                    data:
-                      title: "⚠️ Mop Not Ready"
-                      message: |
-                        {{ now().strftime('%H:%M:%S') }}
+                  # Warning notification (Level 1+)
+                  - if: "{{ debug_info }}"
+                    then:
+                      - action: persistent_notification.create
+                        data:
+                          title: "⚠️ Mop Not Ready"
+                          message: |
+                            {{ now().strftime('%H:%M:%S') }}
 
-                        **Mop Pad:** {{ mop_pad_status }}
-                        **Water:** {{ water_warning_status }}
+                            ├─ ⚠️ Mop Pad: {{ mop_pad_status }}
+                            └─ ⚠️ Water: {{ water_warning_status }}
+
+                            Schedule: {{ schedule_label }}
 
                 else:
                   # Normal notification flow
@@ -2495,11 +2481,18 @@ actions:
                                     {{ notification_sound }}
                                   {% endif %}
 
-                  - action: persistent_notification.create
-                    enabled: "{{ debug_mode | default(false) }}"
-                    data:
-                      title: "🔔 {{ schedule_label }}"
-                      message: "{{ now().strftime('%H:%M:%S') }}"
+                  # Summary notification (Level 1+)
+                  - if: "{{ debug_info }}"
+                    then:
+                      - action: persistent_notification.create
+                        data:
+                          title: "📅 Schedule Notify"
+                          message: |
+                            {{ now().strftime('%H:%M:%S') }}
+
+                            └─ ✔ Notify: sent
+
+                            Schedule: {{ schedule_label }}
 
               # Stop after notification (success, not error)
               - stop: "Scheduled notification sent, awaiting user action"
@@ -2533,17 +2526,21 @@ actions:
           - if: >
               {{ states(error_entity) not in ['no_error', 'unknown', 'unavailable', 'none'] }}
             then:
+              # Error notifications always show
               - action: persistent_notification.create
                 data:
-                  title: "⚠️ Preparation Failed - Robot Error"
+                  title: "⚠️ Prepare Failed"
                   message: |
                     {{ now().strftime('%H:%M:%S') }}
 
-                    **Schedule:** {{ schedule_label }}
-                    **Map:** {{ notification_target_map_name }}
-                    **Error:** {{ error_message }}
+                    ├─ ⚠️ Error: {{ error_message }}
+                    ├─ ○ Map
+                    ├─ ○ Mode
+                    ├─ ○ Start
+                    └─ ○ Pause
 
-                    *Please resolve error before starting*
+                    ❌ Automation aborted
+                    Schedule: {{ schedule_label }}
                   notification_id: "prepare_error_{{ vacuum_base_name }}"
               - stop: "Cannot prepare: Robot error {{ error_message }}"
                 error: true
@@ -2551,13 +2548,21 @@ actions:
           # CHECK 2: Dock check
           - if: "{{ not is_docked }}"
             then:
+              # Error notifications always show
               - action: persistent_notification.create
                 data:
-                  title: "⚠️ Not Docked"
+                  title: "⚠️ Prepare Failed"
                   message: |
                     {{ now().strftime('%H:%M:%S') }}
 
-                    **Schedule:** {{ schedule_label }}
+                    ├─ ⚠️ Dock: not docked
+                    ├─ ○ Map
+                    ├─ ○ Mode
+                    ├─ ○ Start
+                    └─ ○ Pause
+
+                    ❌ Automation aborted
+                    Schedule: {{ schedule_label }}
                   notification_id: "prepare_dock_error_{{ vacuum_base_name }}"
               - stop: "Robot not docked, cannot start preparation"
                 error: true
@@ -2565,72 +2570,78 @@ actions:
           # Mop readiness check (only for mop mode, skip for fallback)
           - if: "{{ _is_mop and not mop_ready }}"
             then:
+              # Error notifications always show
               - action: persistent_notification.create
                 data:
-                  title: "⚠️ Mop Not Ready"
+                  title: "⚠️ Prepare Failed"
                   message: |
                     {{ now().strftime('%H:%M:%S') }}
 
-                    **Mop Pad:** {{ mop_pad_status }}
-                    **Water:** {{ water_warning_status }}
+                    ├─ ⚠️ Mop Pad: {{ mop_pad_status }}
+                    ├─ ⚠️ Water: {{ water_warning_status }}
+                    ├─ ○ Map
+                    ├─ ○ Mode
+                    ├─ ○ Start
+                    └─ ○ Pause
+
+                    ❌ Automation aborted
+                    Schedule: {{ schedule_label }}
                   notification_id: "mop_not_ready_{{ vacuum_base_name }}"
               - stop: "Mop not ready - pad not installed or water empty"
                 error: true
 
-          # Debug: Start
-          - action: persistent_notification.create
-            enabled: "{{ debug_mode | default(false) }}"
-            data:
-              title: "⚙️ Prepare"
-              notification_id: "vacuum_prepare_{{ _map_num }}_{{ 'mop' if _is_mop else 'sweep' }}"
-              message: |
-                {{ now().strftime('%H:%M:%S') }}
-
-                **Map:** {{ notification_target_map_name }}
-                **Mode:** {{ notification_target_mode }}
-                **Repeats:** {{ notification_cleaning_repeats }}
+          # Track start time and old values for summary
+          - variables:
+              _fn_start: "{{ now().timestamp() }}"
+              _old_map: "{{ states(selected_map_select) | default('unknown') }}"
+              _old_mode: "{{ states(cleaning_mode_select) | default('unknown') }}"
+              _old_customized: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+              _old_sequence: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
+              _old_self_clean: "{{ is_state('switch.' ~ vacuum_base_name ~ '_self_clean', 'on') }}"
 
           # SAFETY CHECKS (before any actions)
           - if: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') not in ['idle', 'docked', 'charging', 'sleeping'] }}"
             then:
+              # Error notifications always show
               - action: persistent_notification.create
                 data:
-                  title: "⚠️ Robot Busy"
+                  title: "⚠️ Prepare Failed"
                   message: |
                     {{ now().strftime('%H:%M:%S') }}
 
-                    **Status:** {{ states('sensor.' ~ vacuum_base_name ~ '_status') }}
-                    **Cannot switch map while active**
+                    ├─ ⚠️ Status: {{ states('sensor.' ~ vacuum_base_name ~ '_status') }}
+                    ├─ ○ Map
+                    ├─ ○ Mode
+                    ├─ ○ Start
+                    └─ ○ Pause
+
+                    ❌ Automation aborted
+                    Schedule: {{ schedule_label }}
                   notification_id: "prepare_busy_error_{{ vacuum_base_name }}"
               - stop: "Robot busy, cannot switch map"
                 error: true
 
           - if: "{{ notification_target_map_name == '' or notification_target_map_name == 'unavailable' }}"
             then:
+              # Error notifications always show
               - action: persistent_notification.create
                 data:
-                  title: "⚠️ Invalid Map"
+                  title: "⚠️ Prepare Failed"
                   message: |
                     {{ now().strftime('%H:%M:%S') }}
 
-                    **Map Number:** {{ _map_num }}
-                    **Target:** {{ notification_target_map_name }}
+                    ├─ ⚠️ Map: unavailable ({{ _map_num }})
+                    ├─ ○ Mode
+                    ├─ ○ Start
+                    └─ ○ Pause
+
+                    ❌ Automation aborted
+                    Schedule: {{ schedule_label }}
                   notification_id: "prepare_map_error_{{ vacuum_base_name }}"
               - stop: "Target map unavailable"
                 error: true
 
           # MAP SWITCH FIRST (before all other actions!)
-          - action: persistent_notification.create
-            enabled: "{{ debug_mode | default(false) }}"
-            data:
-              title: "🗺️ Switching Map"
-              notification_id: "vacuum_map_switch_{{ _map_num }}"
-              message: |
-                {{ now().strftime('%H:%M:%S') }}
-
-                **From:** {{ states(selected_map_select) }}
-                **To:** {{ notification_target_map_name }}
-
           - action: select.select_option
             target:
               entity_id: "{{ selected_map_select }}"
@@ -2644,16 +2655,6 @@ actions:
           # 5-second delay for map loading
           - delay:
               seconds: 5
-
-          - action: persistent_notification.create
-            enabled: "{{ debug_mode | default(false) }}"
-            data:
-              title: "✅ Map Ready"
-              notification_id: "vacuum_map_switch_{{ _map_num }}"
-              message: |
-                {{ now().strftime('%H:%M:%S') }}
-
-                **Active Map:** {{ states(selected_map_select) }}
 
           # Step 1: Disable customized_cleaning
           - action: switch.turn_off
@@ -2836,17 +2837,41 @@ actions:
                                 {{ notification_sound }}
                               {% endif %}
 
-          # Debug: Complete
-          - action: persistent_notification.create
-            enabled: "{{ debug_mode | default(false) }}"
-            data:
-              title: "✅ Ready"
-              notification_id: "vacuum_prepare_{{ _map_num }}_{{ 'mop' if _is_mop else 'sweep' }}"
-              message: |
-                {{ now().strftime('%H:%M:%S') }}
+          # Track new values for summary
+          - variables:
+              _new_map: "{{ states(selected_map_select) | default('unknown') }}"
+              _new_mode: "{{ states(cleaning_mode_select) | default('unknown') }}"
+              _new_customized: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+              _new_sequence: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
+              _new_self_clean: "{{ is_state('switch.' ~ vacuum_base_name ~ '_self_clean', 'on') }}"
+              _map_changed: "{{ _old_map != _new_map }}"
+              _mode_changed: "{{ _old_mode != _new_mode }}"
+              _customized_changed: "{{ _old_customized != _new_customized }}"
+              _sequence_changed: "{{ _old_sequence != _new_sequence }}"
+              _self_clean_changed: "{{ _old_self_clean != _new_self_clean }}"
 
-                **Map:** {{ notification_target_map_name }}
-                **Mode:** {{ notification_target_mode }}
+          # Summary notification (Level 1+)
+          - if: "{{ debug_info }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "✅ Prepare Complete"
+                  notification_id: "vacuum_prepare_{{ _map_num }}_{{ 'mop' if _is_mop else 'sweep' }}"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    ├─ ✔ Map: {% if _map_changed %}{{ _old_map }} → **{{ _new_map }}**{% else %}{{ _new_map }}{% endif %}
+                    {% if has_customized_cleaning %}├─ ✔ Customized: {% if _customized_changed %}on → **off**{% else %}off{% endif %}
+                    {% endif %}{% if has_cleaning_sequence %}├─ ✔ Sequence: {% if _sequence_changed %}off → **on**{% else %}on{% endif %}
+                    {% endif %}├─ ✔ Self-Clean: {% if _self_clean_changed %}{{ 'on' if _old_self_clean else 'off' }} → **{{ 'on' if _new_self_clean else 'off' }}**{% else %}{{ 'on' if _new_self_clean else 'off' }}{% endif %}
+                    ├─ ✔ Mode: {% if _mode_changed %}{{ _old_mode }} → **{{ _new_mode }}**{% else %}{{ _new_mode }}{% endif %}
+                    {% if _is_mop %}├─ ✔ Wash: complete
+                    {% endif %}├─ ✔ Start: {{ 'segments' if use_segment_service else 'vacuum.start' }}
+                    ├─ ✔ Pause: paused
+                    └─ ✔ Notify: {{ 'sent' if notification_enabled else 'disabled' }}
+
+                    Schedule: {{ schedule_label }}
+                    Duration: {{ ((now().timestamp() - _fn_start) | round(1)) }}s
 
       # ========================================
       # NOTIFICATION ACTION: Skip Cleaning
@@ -2856,14 +2881,15 @@ actions:
             value_template: "{{ trigger.id == 'notification_skip' }}"
         sequence:
           # Skip this scheduled cleaning - no action needed
-          - if:
-              - condition: template
-                value_template: "{{ debug_mode | default(false) }}"
+          - if: "{{ debug_info }}"
             then:
               - action: persistent_notification.create
                 data:
                   title: "⏭️ Skipped"
-                  message: "{{ now().strftime('%H:%M:%S') }}"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    └─ ✔ Skip: user action
 
       # ========================================
       # EMERGENCY WATCH: Unexpected Cleaning Start
@@ -2879,28 +2905,29 @@ actions:
               - condition: template
                 value_template: "{{ states(selected_map_select) not in [map_1_name, map_2_name, map_3_name] }}"
             then:
-              # Invalid map → Emergency pause
+              # Invalid map → Emergency pause (always show)
               - action: vacuum.pause
                 target:
                   entity_id: "{{ vacuum_entity }}"
 
               - action: persistent_notification.create
                 data:
-                  title: "⚠️ Invalid Map"
+                  title: "⚠️ Emergency Pause"
                   notification_id: "vacuum_emergency_pause"
                   message: |
                     {{ now().strftime('%H:%M:%S') }}
 
-                    **Current:** {{ states(selected_map_select) }}
-                    **Valid:** {{ map_1_name }}, {{ map_2_name }}, {{ map_3_name }}
+                    ├─ ⚠️ Map: {{ states(selected_map_select) }}
+                    └─ ✔ Pause: emergency
+
+                    ❌ Automation aborted
+                    Valid: {{ map_1_name }}, {{ map_2_name }}, {{ map_3_name }}
 
               - stop: "Emergency pause - invalid map selected"
                 error: true
 
           # Map is valid → Continue (external start on valid map)
-          - if:
-              - condition: template
-                value_template: "{{ debug_mode | default(false) }}"
+          - if: "{{ debug_info }}"
             then:
               - action: persistent_notification.create
                 data:
@@ -2909,7 +2936,7 @@ actions:
                   message: |
                     {{ now().strftime('%H:%M:%S') }}
 
-                    **Map:** {{ states(selected_map_select) }}
+                    └─ ✔ Map: {{ states(selected_map_select) }}
 
       # ========================================
       # NOTIFICATION ACTION: Start Cleaning
@@ -2921,33 +2948,37 @@ actions:
           # Verification: Check if robot is still paused
           - if: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') != 'paused' }}"
             then:
+              # Error notifications always show
               - action: persistent_notification.create
                 data:
-                  title: "⚠️ Not Paused"
+                  title: "⚠️ Resume Failed"
                   message: |
                     {{ now().strftime('%H:%M:%S') }}
 
-                    **Status:** {{ states('sensor.' ~ vacuum_base_name ~ '_status') }}
+                    ├─ ⚠️ Status: {{ states('sensor.' ~ vacuum_base_name ~ '_status') }}
+                    └─ ○ Resume
+
+                    ❌ Automation aborted
                   notification_id: "start_not_paused_{{ vacuum_base_name }}"
               - stop: "Robot not in paused state"
                 error: true
-
-          # Debug: Resume
-          - action: persistent_notification.create
-            enabled: "{{ debug_mode | default(false) }}"
-            data:
-              title: "▶️ Resume"
-              notification_id: "vacuum_resume_{{ vacuum_base_name }}"
-              message: |
-                {{ now().strftime('%H:%M:%S') }}
-
-                **Map:** {{ states(selected_map_select) }}
-                **Status:** {{ states('sensor.' ~ vacuum_base_name ~ '_status') }}
 
           # Resume cleaning after transport
           - action: vacuum.start
             target:
               entity_id: "{{ vacuum_entity }}"
+
+          # Summary notification (Level 1+)
+          - if: "{{ debug_info }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "✅ Resume Complete"
+                  notification_id: "vacuum_resume_{{ vacuum_base_name }}"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    └─ ✔ Resume: {{ states(selected_map_select) }}
 
       # ========================================
       # NOTIFICATION ACTION: Cancel Cleaning
@@ -2989,14 +3020,17 @@ actions:
             target:
               entity_id: "{{ vacuum_entity }}"
 
-          - if:
-              - condition: template
-                value_template: "{{ debug_mode | default(false) }}"
+          # Summary notification (Level 1+)
+          - if: "{{ debug_info }}"
             then:
               - action: persistent_notification.create
                 data:
-                  title: "🏠 Return to Base"
-                  message: "{{ now().strftime('%H:%M:%S') }}"
+                  title: "🏠 Cancel Complete"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    ├─ ✔ Map: {{ base_station_map }}
+                    └─ ✔ Return: to base
 
       # ============================================================================
       # Auto-Switch-Back to Base Map (after room cleaning completion)
@@ -3049,21 +3083,9 @@ actions:
             then:
               - stop: "Recent pause detected ({{ time_since_pause }}s ago), safety buffer active"
 
-          # Debug notification (if enabled)
-          - if: "{{ debug_mode }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "🗺️ Auto-Switch-Back to Base Map"
-                  message: |
-                    {{ now().strftime('%H:%M:%S') }}
-
-                    **Trigger:** Task completed
-                    **Task Status:** {{ states(task_status_sensor) }}
-                    **Current Map:** {{ current_map_name }}
-                    **Target Map:** {{ base_station_map }}
-                    **Wash Status:** {{ states(self_wash_base_status_sensor) }}
-                    **Action:** Switching map...
+          # Track old map for summary
+          - variables:
+              _old_map: "{{ current_map_name }}"
 
           # Switch to base station map
           - action: select.select_option
@@ -3078,24 +3100,20 @@ actions:
             timeout: 30
             continue_on_timeout: true
 
-          # Success notification (if debug enabled)
-          - if: "{{ debug_mode }}"
+          # Summary notification (Level 1+)
+          - if: "{{ debug_info }}"
             then:
               - action: persistent_notification.create
                 data:
-                  title: "✅ Map Switched to Base"
+                  title: "✅ Auto-Switch Complete"
                   message: |
                     {{ now().strftime('%H:%M:%S') }}
 
-                    **New Map:** {{ states(selected_map_select) }}
-                    **Robot Status:** {{ current_status }}
-                    **Ready for next cleaning**
+                    └─ ✔ Map: {{ _old_map }} → **{{ base_station_map }}**
 
     # Default: Unknown trigger ID (should not happen)
     default:
-      - if:
-          - condition: template
-            value_template: "{{ debug_mode | default(false) }}"
+      - if: "{{ debug_info }}"
         then:
           - action: persistent_notification.create
             data:
@@ -3103,8 +3121,8 @@ actions:
               message: |
                 {{ now().strftime('%H:%M:%S') }}
 
-                **Function:** {{ triggered_function }}
-                **Platform:** {{ trigger.platform }}
+                ├─ ⚠️ Function: {{ triggered_function }}
+                └─ ⚠️ Platform: {{ trigger.platform }}
 
 # ========================================
 # AUTOMATION MODE
