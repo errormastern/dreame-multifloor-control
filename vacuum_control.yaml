@@ -2087,7 +2087,7 @@ actions:
                   - variables:
                       timing_start_cleaning_wait: "{{ now().timestamp() }}"
                       expected_cleaning_states: >
-                        {% if current_mode == mode_sweeping_only %}
+                        {% if current_mode == mode_sweeping %}
                           ['sweeping']
                         {% elif current_mode == mode_sweeping_mopping %}
                           ['sweeping_and_mopping', 'mopping']
