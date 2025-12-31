@@ -16,6 +16,14 @@ blueprint:
     🏠 Segment-based Map cleaning with configurable repeats
     🗺️ Auto-discard temporary maps for seamless multi-floor operation
     💧 Mop readiness check (mop pad + water tank) with sweep-only fallback
+    🏠 **Auto-Switch-Back to Base Map** after multi-floor cleaning (v0.9.14+)
+
+    **✨ Auto-Switch-Back to Base Map** (v0.9.14+)
+    • Automatically returns to base station map after multi-floor cleaning
+    • Prevents accidental cleaning on wrong map
+    • Smart detection: Only after room cleaning (not washing/drying)
+    • Schedule-safe: Won't interfere with preparation workflows
+    • 20-second safety buffer against accidental triggers
 
     **Requirements:**
     • Home Assistant ≥ 2024.10.0
@@ -755,6 +763,44 @@ blueprint:
       collapsed: true
       input:
         # ============================================
+        # AUTO-SWITCH-BACK
+        # ============================================
+        auto_switch_to_base_map:
+          name: "🗺️ Auto-Switch-Back to Base Map"
+          description: |
+            Automatically switch back to base station map after room cleaning is completed.
+
+            **When it triggers:**
+            - Task status changes to 'completed'
+            - Cleaning task was a room/floor cleaning (NOT washing/drying)
+            - Current map is NOT the base station map
+            - NO active schedule preparation workflow
+
+            **Safety features:**
+            - 20-second buffer after schedule preparation
+            - Filters out washing/drying operations
+            - Prevents accidental triggers on brief dock/undock
+
+            **Why useful:**
+            - Always returns to home map after multi-floor cleaning
+            - Avoids accidentally starting cleaning on wrong map
+            - Robot is always ready on base station map
+          selector:
+            boolean:
+          default: true
+          icon: mdi:map-marker-path
+
+        task_status_sensor_trigger:
+          name: "🔍 Task Status Sensor"
+          description: "Select task status sensor (e.g., `sensor.{vacuum_name}_task_status`). Leave empty to disable auto-switch."
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+              multiple: false
+          default: []
+
+        # ============================================
         # MAP HANDLING
         # ============================================
         auto_discard_temporary_map:
@@ -960,6 +1006,16 @@ triggers:
     id: "setup_required"
 
   # ========================================
+  # AUTO-SWITCH-BACK TO BASE MAP
+  # ========================================
+  # Automatically switches back to base station map after room cleaning completion
+  # Requires task_status_sensor_trigger to be configured
+  - trigger: state
+    entity_id: !input task_status_sensor_trigger
+    to: "completed"
+    id: auto_switch_to_base
+
+  # ========================================
   # FUNCTION 1: Sweep Only Mode
   # ========================================
   - triggers: !input sweep_trigger
@@ -1137,6 +1193,10 @@ variables:
   charging_status_sensor: "sensor.{{ vacuum_base_name }}_charging_status"
   stop_drying_button: "button.{{ vacuum_base_name }}_manual_drying"
 
+  # Task status sensor for auto-switch detection (auto-detected for Actions)
+  task_status_sensor: "sensor.{{ vacuum_base_name }}_task_status"
+  self_wash_base_status_sensor: "sensor.{{ vacuum_base_name }}_self_wash_base_status"
+
   # ========================================
   # ERROR DETECTION
   # ========================================
@@ -1303,6 +1363,19 @@ variables:
   moistening_timeout: !input moistening_timeout
   use_segment_service: !input use_segment_service
   debug_mode: !input debug_mode
+
+  # ========================================
+  # AUTO-SWITCH TO BASE MAP FEATURE
+  # ========================================
+  auto_switch_to_base_enabled: !input auto_switch_to_base_map
+
+  # Preparation tracking (for schedule workflow collision detection)
+  preparation_active: >
+    {{ trigger.id in ['notification_prepare', 'notification_start'] if trigger.id is defined else false }}
+
+  # Time since last preparation pause (20s safety buffer)
+  last_pause_time: "{{ as_timestamp(states[vacuum_entity].last_changed) if states[vacuum_entity].state == 'paused' else 0 }}"
+  time_since_pause: "{{ (as_timestamp(now()) - last_pause_time) if last_pause_time > 0 else 999 }}"
 
   # ========================================
   # NOTIFICATION TEMPLATE VARIABLES
@@ -3003,6 +3076,99 @@ actions:
                 data:
                   title: "🏠 Return to Base"
                   message: "{{ now().strftime('%H:%M:%S') }}"
+
+    # ============================================================================
+    # Auto-Switch-Back to Base Map (after room cleaning completion)
+    # ============================================================================
+    - conditions:
+        - condition: template
+          value_template: "{{ trigger.id == 'auto_switch_to_base' }}"
+      sequence:
+        # Feature flag check
+        - if:
+            - condition: template
+              value_template: "{{ not auto_switch_to_base_enabled }}"
+          then:
+            - stop: "Auto-switch to base map disabled"
+
+        # Check: Task status sensor is configured
+        - if:
+            - condition: template
+              value_template: "{{ not has_value(task_status_sensor) }}"
+          then:
+            - stop: "Task status sensor not configured"
+
+        # Check: Current map is NOT base station map
+        - if:
+            - condition: template
+              value_template: "{{ current_map_name == base_station_map }}"
+          then:
+            - stop: "Already on base station map, no switch needed"
+
+        # Check: NOT during washing/drying operation
+        - if:
+            - condition: template
+              value_template: >
+                {% set wash_status = states(self_wash_base_status_sensor) %}
+                {{ wash_status in ['washing', 'drying'] }}
+          then:
+            - stop: "Washing/drying in progress, skip auto-switch"
+
+        # Check: NO active schedule preparation workflow
+        - if:
+            - condition: template
+              value_template: "{{ preparation_active }}"
+          then:
+            - stop: "Schedule preparation active, skip auto-switch"
+
+        # Check: 20-second safety buffer since last pause
+        - if:
+            - condition: template
+              value_template: "{{ time_since_pause < 20 }}"
+          then:
+            - stop: "Recent pause detected ({{ time_since_pause }}s ago), safety buffer active"
+
+        # Debug notification (if enabled)
+        - if: "{{ debug_mode }}"
+          then:
+            - action: persistent_notification.create
+              data:
+                title: "🗺️ Auto-Switch-Back to Base Map"
+                message: |
+                  {{ now().strftime('%H:%M:%S') }}
+
+                  **Trigger:** Task completed
+                  **Task Status:** {{ states(task_status_sensor) }}
+                  **Current Map:** {{ current_map_name }}
+                  **Target Map:** {{ base_station_map }}
+                  **Wash Status:** {{ states(self_wash_base_status_sensor) }}
+                  **Action:** Switching map...
+
+        # Switch to base station map
+        - action: select.select_option
+          continue_on_error: true
+          target:
+            entity_id: "{{ selected_map_select }}"
+          data:
+            option: "{{ base_station_map }}"
+
+        # Verify switch completed
+        - wait_template: "{{ states(selected_map_select) == base_station_map }}"
+          timeout: 30
+          continue_on_timeout: true
+
+        # Success notification (if debug enabled)
+        - if: "{{ debug_mode }}"
+          then:
+            - action: persistent_notification.create
+              data:
+                title: "✅ Map Switched to Base"
+                message: |
+                  {{ now().strftime('%H:%M:%S') }}
+
+                  **New Map:** {{ states(selected_map_select) }}
+                  **Robot Status:** {{ current_status }}
+                  **Ready for next cleaning**
 
     # Default: Unknown trigger ID (should not happen)
     default:
