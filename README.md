@@ -18,7 +18,7 @@ A Home Assistant blueprint for controlling Dreame vacuums across multiple floors
 ✨ Optional customised cleaning using room settings from Dreame app<br>
 ⚠️ Safety checks: schedule conflicts, robot and cleaning options, dock status, mop readiness<br>
 🗺️ Auto-discard temporary maps for seamless multi-floor operation<br>
-🏠 **Auto-switch to base map** after multi-floor cleaning **(v0.9.14+)**<br>
+🏠 **Auto-Switch-Back to Base Map** after multi-floor cleaning **(v0.9.14+)**<br>
 🐛 Debug mode with timing measurements
 
 
@@ -132,9 +132,9 @@ The blueprint employs timeouts as a safety fallback mechanism to ensure the prep
 
 Adjust these in the blueprint configuration if your robot behaves differently. Check Debug Messages for measured timings.
 
-### 🏠 Auto-Switch to Base Station Map (v0.9.14+)
+## 🏠 Auto-Switch-Back to Base Map (v0.9.14+)
 
-Automatically switches to the base station map after completing a multi-floor cleaning task.
+Automatically switches back to the base station map after completing a multi-floor cleaning task.
 
 **Configuration:**
 1. Enable/disable via Advanced Settings (default: enabled)
@@ -146,7 +146,7 @@ Automatically switches to the base station map after completing a multi-floor cl
 - 20-second safety buffer after schedule preparation
 - Won't interfere with active schedule workflows
 
-**Example:** Robot cleans "Obergeschoss" (upper floor) → returns to dock → auto-switches back to "Wohnzimmer" (base station map)
+**Example:** Robot cleans "upper floor" → returns to dock → auto-switches back to "livingroom" (base station map)
 
 ## 🌐 Localisation
 
