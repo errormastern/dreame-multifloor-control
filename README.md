@@ -159,7 +159,7 @@ Customise notification variables in the Localisation section:
 
 **Automation mode:** `queued` (max: 10) – required for button devices sending press + release events.
 
-**Tested with:** Xiaomi X10+ (Dreame L10s Ultra and other supported models should work).
+**Tested with:** Xiaomi X10+ (Dreame L10s Ultra or other similar models supported by [Dreame Vacuum Integration](https://github.com/Tasshack/dreame-vacuum) should work also).
 
 
 ## 🔧 Troubleshooting
