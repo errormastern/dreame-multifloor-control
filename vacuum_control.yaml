@@ -3072,98 +3072,98 @@ actions:
                   title: "🏠 Return to Base"
                   message: "{{ now().strftime('%H:%M:%S') }}"
 
-    # ============================================================================
-    # Auto-Switch-Back to Base Map (after room cleaning completion)
-    # ============================================================================
-    - conditions:
-        - condition: template
-          value_template: "{{ trigger.id == 'auto_switch_to_base' }}"
-      sequence:
-        # Feature flag check
-        - if:
-            - condition: template
-              value_template: "{{ not auto_switch_to_base_enabled }}"
-          then:
-            - stop: "Auto-switch to base map disabled"
+      # ============================================================================
+      # Auto-Switch-Back to Base Map (after room cleaning completion)
+      # ============================================================================
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'auto_switch_to_base' }}"
+        sequence:
+          # Feature flag check
+          - if:
+              - condition: template
+                value_template: "{{ not auto_switch_to_base_enabled }}"
+            then:
+              - stop: "Auto-switch to base map disabled"
 
-        # Check: Task status sensor is configured
-        - if:
-            - condition: template
-              value_template: "{{ not has_value(task_status_sensor) }}"
-          then:
-            - stop: "Task status sensor not configured"
+          # Check: Task status sensor is configured
+          - if:
+              - condition: template
+                value_template: "{{ not has_value(task_status_sensor) }}"
+            then:
+              - stop: "Task status sensor not configured"
 
-        # Check: Current map is NOT base station map
-        - if:
-            - condition: template
-              value_template: "{{ current_map_name == base_station_map }}"
-          then:
-            - stop: "Already on base station map, no switch needed"
+          # Check: Current map is NOT base station map
+          - if:
+              - condition: template
+                value_template: "{{ current_map_name == base_station_map }}"
+            then:
+              - stop: "Already on base station map, no switch needed"
 
-        # Check: NOT during washing/drying operation
-        - if:
-            - condition: template
-              value_template: >
-                {% set wash_status = states(self_wash_base_status_sensor) %}
-                {{ wash_status in ['washing', 'drying'] }}
-          then:
-            - stop: "Washing/drying in progress, skip auto-switch"
+          # Check: NOT during washing/drying operation
+          - if:
+              - condition: template
+                value_template: >
+                  {% set wash_status = states(self_wash_base_status_sensor) %}
+                  {{ wash_status in ['washing', 'drying'] }}
+            then:
+              - stop: "Washing/drying in progress, skip auto-switch"
 
-        # Check: NO active schedule preparation workflow
-        - if:
-            - condition: template
-              value_template: "{{ preparation_active }}"
-          then:
-            - stop: "Schedule preparation active, skip auto-switch"
+          # Check: NO active schedule preparation workflow
+          - if:
+              - condition: template
+                value_template: "{{ preparation_active }}"
+            then:
+              - stop: "Schedule preparation active, skip auto-switch"
 
-        # Check: 20-second safety buffer since last pause
-        - if:
-            - condition: template
-              value_template: "{{ time_since_pause < 20 }}"
-          then:
-            - stop: "Recent pause detected ({{ time_since_pause }}s ago), safety buffer active"
+          # Check: 20-second safety buffer since last pause
+          - if:
+              - condition: template
+                value_template: "{{ time_since_pause < 20 }}"
+            then:
+              - stop: "Recent pause detected ({{ time_since_pause }}s ago), safety buffer active"
 
-        # Debug notification (if enabled)
-        - if: "{{ debug_mode }}"
-          then:
-            - action: persistent_notification.create
-              data:
-                title: "🗺️ Auto-Switch-Back to Base Map"
-                message: |
-                  {{ now().strftime('%H:%M:%S') }}
+          # Debug notification (if enabled)
+          - if: "{{ debug_mode }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "🗺️ Auto-Switch-Back to Base Map"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
 
-                  **Trigger:** Task completed
-                  **Task Status:** {{ states(task_status_sensor) }}
-                  **Current Map:** {{ current_map_name }}
-                  **Target Map:** {{ base_station_map }}
-                  **Wash Status:** {{ states(self_wash_base_status_sensor) }}
-                  **Action:** Switching map...
+                    **Trigger:** Task completed
+                    **Task Status:** {{ states(task_status_sensor) }}
+                    **Current Map:** {{ current_map_name }}
+                    **Target Map:** {{ base_station_map }}
+                    **Wash Status:** {{ states(self_wash_base_status_sensor) }}
+                    **Action:** Switching map...
 
-        # Switch to base station map
-        - action: select.select_option
-          continue_on_error: true
-          target:
-            entity_id: "{{ selected_map_select }}"
-          data:
-            option: "{{ base_station_map }}"
+          # Switch to base station map
+          - action: select.select_option
+            continue_on_error: true
+            target:
+              entity_id: "{{ selected_map_select }}"
+            data:
+              option: "{{ base_station_map }}"
 
-        # Verify switch completed
-        - wait_template: "{{ states(selected_map_select) == base_station_map }}"
-          timeout: 30
-          continue_on_timeout: true
+          # Verify switch completed
+          - wait_template: "{{ states(selected_map_select) == base_station_map }}"
+            timeout: 30
+            continue_on_timeout: true
 
-        # Success notification (if debug enabled)
-        - if: "{{ debug_mode }}"
-          then:
-            - action: persistent_notification.create
-              data:
-                title: "✅ Map Switched to Base"
-                message: |
-                  {{ now().strftime('%H:%M:%S') }}
+          # Success notification (if debug enabled)
+          - if: "{{ debug_mode }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "✅ Map Switched to Base"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
 
-                  **New Map:** {{ states(selected_map_select) }}
-                  **Robot Status:** {{ current_status }}
-                  **Ready for next cleaning**
+                    **New Map:** {{ states(selected_map_select) }}
+                    **Robot Status:** {{ current_status }}
+                    **Ready for next cleaning**
 
     # Default: Unknown trigger ID (should not happen)
     default:
