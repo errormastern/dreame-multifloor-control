@@ -146,7 +146,7 @@ Automatically switches back to the base station map after completing a multi-flo
 - 20-second safety buffer after schedule preparation
 - Won't interfere with active schedule workflows
 
-**Example:** Robot cleans "upper floor" → returns to dock → auto-switches back to "livingroom" (base station map)
+**Example:** Robot cleans "upper floor" → manually returned to dock → auto-switches back to "livingroom" (base station map)
 
 ## 🌐 Localisation
 
