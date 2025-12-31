@@ -15,16 +15,11 @@ Configuration reference for Dreame Vacuum Multi-Floor Control blueprint.
 ![Robot Configuration](images/robot-configuration.png)
 
 ### 🤖 Vacuum Entity
-**Type:** Entity selector (vacuum domain)  
-**Required:** Yes
 
 Select your vacuum entity. All related entities (status, mode, map, camera) are auto-detected from this selection.
 
 ### ⏸️ Pause Delay After Start
-**Type:** Number (slider)  
-**Default:** 4.5s  
-**Range:** 0-10s  
-**Unit:** Seconds
+**Default:** 4.5s
 
 Time robot moves away from dock before pausing for transport.
 - Only applies to non-base-station maps
@@ -39,16 +34,11 @@ Time robot moves away from dock before pausing for transport.
 **Note:** Map names are auto-detected from the integration.
 
 ### 🔄 Cleaning Repeats
-**Type:** Number (slider)  
-**Default:** 2  
-**Range:** 1-3  
-**Unit:** passes
+**Default:** 2
 
 Number of cleaning passes per room. Overrides global fallback setting.
 
 ### 🔀 Map Switch Trigger
-**Type:** Trigger  
-**Default:** Empty (optional)
 
 Switches to this map when trigger fires.
 
@@ -59,13 +49,11 @@ Switches to this map when trigger fires.
 Leave empty for schedule-only maps.
 
 ### 📅 Sweep-Only Schedule
-**Type:** Entity selector (schedule domain)  
 **Default:** "none"
 
 Optional schedule entity for automatic sweep-only cleaning.
 
 ### 📅 Sweep+Mop Schedule
-**Type:** Entity selector (schedule domain)  
 **Default:** "none"
 
 Optional schedule entity for automatic sweep+mop cleaning.
@@ -77,19 +65,16 @@ Optional schedule entity for automatic sweep+mop cleaning.
 ![Map Functions](images/map-functions.png)
 
 ### 🗺️ Auto-Switch-Back to Base Map
-**Type:** Boolean  
 **Default:** Enabled
 
 Automatically returns to base station map after completing room cleaning. Includes 20-second safety buffer after schedule preparation.
 
 ### 🔍 Task Status Sensor
-**Type:** Entity selector (sensor domain)  
 **Auto-detected:** `sensor.*_task_status`
 
 Required for auto-switch-back feature.
 
 ### 🗺️ Auto-Discard Temporary Maps
-**Type:** Boolean  
 **Default:** Enabled
 
 Automatically deletes temporary maps before map switching. Prevents map selection blocking.
@@ -101,8 +86,6 @@ Automatically deletes temporary maps before map switching. Prevents map selectio
 ![Control Functions](images/control-functions.png)
 
 ### ▶️ Smart Start/Pause/Resume Trigger
-**Type:** Trigger  
-**Default:** Empty (optional)
 
 Intelligent control based on robot status:
 - Idle → Start cleaning
@@ -112,16 +95,12 @@ Intelligent control based on robot status:
 **Trigger ID:** `fn_start` (required for State/Event triggers)
 
 ### 🧹 Sweep Only Mode Trigger
-**Type:** Trigger  
-**Default:** Empty (optional)
 
 Switches vacuum to sweep-only mode.
 
 **Trigger ID:** `fn_sweep` (required for State/Event triggers)
 
 ### 💧 Sweep + Mop Mode Trigger
-**Type:** Trigger  
-**Default:** Empty (optional)
 
 Switches vacuum to sweep+mop mode.
 
@@ -134,21 +113,16 @@ Switches vacuum to sweep+mop mode.
 ![Cleaning Settings](images/cleaning-settings.png)
 
 ### 🔄 Global Cleaning Repeats (Fallback)
-**Type:** Number (slider)  
-**Default:** 2  
-**Range:** 1-3  
-**Unit:** passes
+**Default:** 2
 
 Default cleaning passes used when per-map repeats are not configured.
 
 ### 🧩 Use Segment Service
-**Type:** Boolean  
 **Default:** Enabled
 
 Enables room-based cleaning via `dreame_vacuum.vacuum_clean_segment` service. Falls back to `vacuum.start` when disabled or segments unavailable.
 
 ### 📋 Use Cleaning Sequence
-**Type:** Boolean  
 **Default:** Enabled
 
 Cleans rooms in order defined in Dreame app (uses `order` attribute from map camera).
@@ -158,7 +132,6 @@ Cleans rooms in order defined in Dreame app (uses `order` attribute from map cam
 - `switch.*_cleaning_sequence` available
 
 ### ⚙️ Use Customised Cleaning
-**Type:** Boolean  
 **Default:** Enabled
 
 Uses per-room settings from Dreame app (suction level, water volume, mop humidity, repeats per room).
@@ -186,81 +159,61 @@ Uses per-room settings from Dreame app (suction level, water volume, mop humidit
 ![Notification Settings](images/notification-settings.png)
 
 ### 🔔 Enable Notifications
-**Type:** Boolean  
 **Default:** Off
 
 Sends notifications for scheduled cleaning and pickup events. Includes action buttons (Prepare, Skip, Start, Cancel).
 
 ### 👤 Persons to Notify
-**Type:** Entity selector (person domain, multiple)  
-**Default:** Empty
 
 Person entities to notify. Only sends to persons currently at home (presence-based filtering). Notification service auto-detected from device tracker.
 
 ### 👥 Notification Groups
-**Type:** Text (multiple)  
-**Default:** Empty
 
 Notification group names without `notify.` prefix. Always sends to groups (no presence check).
 
 **Example:** `family_phones` → calls `notify.family_phones`
 
 ### 📅 Scheduled Notification Title
-**Type:** Text  
 **Default:** "Scheduled Cleaning Ready"
 
 Notification title for scheduled cleaning events. Supports template variables (see table below).
 
 ### 📅 Scheduled Notification Message
-**Type:** Text (multiline)  
 **Default:** "{{ robot_name }} is ready for scheduled cleaning on {{ map_name }} ({{ cleaning_mode_display }}). Please prepare the robot."
 
 Notification message for scheduled cleaning events. Supports template variables (see table below).
 
 ### 📅 Schedule Repeat Count
-**Type:** Number (slider)  
-**Default:** 2  
-**Range:** 1-3
+**Default:** 2
 
 Number of reminder notifications if no response.
 
 ### 📅 Schedule Repeat Interval
-**Type:** Number (slider)  
-**Default:** 15  
-**Range:** 0-240  
-**Unit:** minutes
+**Default:** 15 minutes
 
 Time between reminder notifications. Set to 0 for no repeats.
 
 ### 🤖 Pickup Notification Title
-**Type:** Text  
 **Default:** "Robot Ready for Transport"
 
 Notification title for pickup events (robot paused and ready for transport). Supports template variables (see table below).
 
 ### 🤖 Pickup Notification Message
-**Type:** Text (multiline)  
 **Default:** "{{ robot_name }} is paused and ready for transport to {{ map_name }}. Please pick up the robot."
 
 Notification message for pickup events. Supports template variables (see table below).
 
 ### 🤖 Pickup Repeat Count
-**Type:** Number (slider)  
-**Default:** 2  
-**Range:** 1-3
+**Default:** 2
 
 Number of reminder notifications if robot not started.
 
 ### 🤖 Pickup Repeat Interval
-**Type:** Number (slider)  
-**Default:** 10  
-**Range:** 0-240  
-**Unit:** minutes
+**Default:** 10 minutes
 
 Time between reminder notifications. Set to 0 for no repeats.
 
 ### 📱 iOS Interruption Level
-**Type:** Select  
 **Default:** time-sensitive
 
 Notification priority level for iOS devices.
@@ -272,21 +225,17 @@ Notification priority level for iOS devices.
 - `critical`: Always notifies, bypasses Do Not Disturb
 
 ### 🔊 iOS Sound
-**Type:** Text  
 **Default:** "default"
 
 Sound for iOS notifications. Options: `default`, `none`, or custom sound name.
 
 ### 🚨 iOS Critical Alert
-**Type:** Boolean  
 **Default:** Off
 
 Bypasses Do Not Disturb and mute switch. Requires iOS permission.
 
 ### 🔈 iOS Critical Volume
-**Type:** Number (slider)  
-**Default:** 1.0  
-**Range:** 0.0-1.0
+**Default:** 1.0
 
 Volume level for critical alerts. Only applies when iOS Critical Alert is enabled.
 
@@ -309,61 +258,51 @@ Volume level for critical alerts. Only applies when iOS Critical Alert is enable
 Customise display texts for notifications and buttons in your preferred language.
 
 ### 🧹 Sweep Mode Display Name
-**Type:** Text  
 **Default:** "Sweep"
 
 Display name for sweep-only mode in notifications.
 
 ### 💧 Mop Mode Display Name
-**Type:** Text  
 **Default:** "Mop"
 
 Display name for mop-only mode in notifications.
 
 ### 🧹💧 Sweep + Mop Mode Display Name
-**Type:** Text  
 **Default:** "Sweep + Mop"
 
 Display name for combined sweep+mop mode in notifications.
 
 ### ✋ Prepare Button Label
-**Type:** Text  
 **Default:** "Prepare Robot"
 
 Button text for robot preparation action.
 
 ### ⏭️ Skip Button Label
-**Type:** Text  
 **Default:** "Skip Cleaning"
 
 Button text for skipping scheduled cleaning.
 
 ### ▶️ Start Cleaning Button Label
-**Type:** Text  
 **Default:** "Start Cleaning"
 
 Button text for starting cleaning after pickup.
 
 ### ❌ Cancel Button Label
-**Type:** Text  
 **Default:** "Cancel Cleaning"
 
 Button text for cancelling cleaning workflow.
 
 ### 🧹 Sweep Only Button Label
-**Type:** Text  
 **Default:** "Start Sweep Only"
 
 Button text for sweep-only fallback when mop not ready.
 
 ### ⚠️ Mop Not Ready - Title
-**Type:** Text  
 **Default:** "⚠️ Mop Not Ready"
 
 Notification title when mop pads missing or water tank empty.
 
 ### 💬 Mop Not Ready - Message
-**Type:** Text (multiline)  
 **Default:** "Mop pads not installed or water tank empty. Start sweep-only instead?"
 
 Notification message when mop pads missing or water tank empty.
@@ -377,42 +316,28 @@ Notification message when mop pads missing or water tank empty.
 ### Timeouts
 
 #### ⏱️ Moistening Timeout
-**Type:** Number (slider)  
-**Default:** 215s  
-**Range:** 10-300s  
-**Step:** 5s  
-**Unit:** seconds
+**Default:** 215s
 
 Maximum wait time for mop washing cycle completion at base station.
 
 #### ⏱️ Sweep Start Timeout
-**Type:** Number (slider)  
-**Default:** 30s  
-**Range:** 5-60s  
-**Step:** 5s  
-**Unit:** seconds
+**Default:** 30s
 
 Maximum wait time for sweep-only cleaning to start.
 
 #### ⏱️ Mop Start Timeout
-**Type:** Number (slider)  
-**Default:** 120s  
-**Range:** 60-180s  
-**Step:** 10s  
-**Unit:** seconds
+**Default:** 120s
 
 Maximum wait time for mop operations (washing to start, robot to start after washing).
 
 ### Mode Values
 
 #### 🧹 Mode Value: Sweep Only
-**Type:** Text  
 **Default:** "sweeping"
 
 Exact value for sweep-only mode (case-sensitive). Must match `select.*_cleaning_mode` entity options.
 
 #### 🧹💧 Mode Value: Sweep + Mop
-**Type:** Text  
 **Default:** "sweeping_and_mopping"
 
 Exact value for sweep+mop mode (case-sensitive). Must match `select.*_cleaning_mode` entity options.
@@ -460,7 +385,6 @@ Comma-separated list of base station status values requiring attention (tank emp
 ### Debug
 
 #### 🐛 Debug Level
-**Type:** Select  
 **Default:** 0 (Off)
 
 Controls debug notification verbosity.
