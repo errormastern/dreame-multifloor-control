@@ -100,7 +100,7 @@ blueprint:
           default: 2
 
         map1_trigger:
-          name: "🔀 Map Switch Trigger"
+          name: "🔀 Map Switch Trigger (Optional)"
           description: |
             Trigger to switch to this map.
 
@@ -163,7 +163,7 @@ blueprint:
           default: 2
 
         map2_trigger:
-          name: "🔀 Map Switch Trigger"
+          name: "🔀 Map Switch Trigger (Optional)"
           description: |
             Trigger to switch to this map.
 
@@ -226,7 +226,7 @@ blueprint:
           default: 2
 
         map3_trigger:
-          name: "🔀 Map Switch Trigger"
+          name: "🔀 Map Switch Trigger (Optional)"
           description: |
             Trigger to switch to this map.
 
@@ -261,6 +261,41 @@ blueprint:
             entity:
               filter:
                 - domain: schedule
+
+    # ========================================
+    # MAP FUNCTIONS
+    # ========================================
+    map_functions:
+      name: "Map Functions"
+      description: "Automatic map switching and temporary map handling."
+      icon: mdi:map
+      collapsed: true
+      input:
+        auto_switch_to_base_map:
+          name: "🗺️ Auto-Switch-Back to Base Map"
+          description: "Automatically switch back to base station map after room cleaning is completed."
+          selector:
+            boolean:
+          default: true
+
+        task_status_sensor_trigger:
+          name: "🔍 Task Status Sensor"
+          description: "Select task status sensor (e.g., `sensor.{vacuum_name}_task_status`). Leave empty to disable auto-switch."
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+              multiple: false
+          default: []
+
+        auto_discard_temporary_map:
+          name: "🗺️ Auto-Discard Temporary Maps"
+          description: |
+            Automatically discard temporary maps before switching maps.
+            Allows seamless multi-floor operation when robot creates new maps.
+          selector:
+            boolean:
+          default: true
 
     # ========================================
     # CONTROL FUNCTIONS
@@ -306,6 +341,75 @@ blueprint:
           selector:
             trigger:
           default: []
+
+    # ========================================
+    # CLEANING SETTINGS
+    # ========================================
+    cleaning_settings:
+      name: "Cleaning Settings"
+      description: "Configure cleaning behavior and segment-based cleaning."
+      icon: mdi:tune
+      collapsed: true
+      input:
+        global_cleaning_repeats:
+          name: "🔄 Global Cleaning Repeats (Fallback)"
+          description: |
+            Default cleaning passes per room/segment (1-3).
+            Used only when per-map repeats are not configured.
+
+            • **1:** Daily cleaning
+            • **2:** Normal cleaning (recommended)
+            • **3:** Intensive/deep cleaning
+
+            **Note:** Per-map repeats override this setting.
+          selector:
+            number:
+              min: 1
+              max: 3
+              step: 1
+              mode: slider
+              unit_of_measurement: "passes"
+          default: 2
+
+        use_segment_service:
+          name: "🧩 Use Segment Service"
+          description: |
+            Enable room/segment-based cleaning with configurable repeats.
+            Uses `dreame_vacuum.vacuum_clean_segment` service.
+
+            **Integration with Customized Cleaning:**
+            When customized_cleaning or cleaning_sequence is enabled, segment service call parameters (repeats, suction, water) are ignored by robot. Robot uses settings from Dreame app instead.
+
+            Disable if segments aren't detected or robot doesn't support segment cleaning.
+            Falls back to `vacuum.start` when disabled.
+          selector:
+            boolean:
+          default: true
+
+        use_cleaning_sequence:
+          name: "📋 Use Cleaning Sequence"
+          description: |
+            Enable room cleaning sequence from Dreame app settings (uses `order` attribute from map).
+            Optional: Cleans rooms in user-defined order from Dreame app.
+
+            **Fallback:** If disabled or no sequence defined, cleans all rooms without specific order.
+            **Requires:** Firmware ≥1156, `switch.{robot}_cleaning_sequence` available.
+          selector:
+            boolean:
+          default: true
+
+        use_customized_cleaning:
+          name: "⚙️ Use Customized Cleaning (Mop Modes Only)"
+          description: |
+            Enable room-specific cleaning settings from Dreame app (suction level, water volume, mop humidity, repeats per room).
+            Optional: Uses per-room settings defined in Dreame app.
+
+            **IMPORTANT:** Only used for Sweep+Mop programs. Sweep-only programs use sequence but NOT customized settings.
+            **Fallback:** If disabled or no room settings defined, uses global mode and blueprint repeat settings.
+            **Requires:** Firmware ≥1156, `switch.{robot}_customized_cleaning` available.
+          selector:
+            boolean:
+          default: true
 
     # ========================================
     # NOTIFICATION SETTINGS
@@ -486,110 +590,6 @@ blueprint:
               step: 0.1
               mode: slider
           default: 1.0
-
-    # ========================================
-    # CLEANING SETTINGS
-    # ========================================
-    cleaning_settings:
-      name: "Cleaning Settings"
-      description: "Configure cleaning behavior and segment-based cleaning."
-      icon: mdi:tune
-      collapsed: true
-      input:
-        global_cleaning_repeats:
-          name: "🔄 Global Cleaning Repeats (Fallback)"
-          description: |
-            Default cleaning passes per room/segment (1-3).
-            Used only when per-map repeats are not configured.
-
-            • **1:** Daily cleaning
-            • **2:** Normal cleaning (recommended)
-            • **3:** Intensive/deep cleaning
-
-            **Note:** Per-map repeats override this setting.
-          selector:
-            number:
-              min: 1
-              max: 3
-              step: 1
-              mode: slider
-              unit_of_measurement: "passes"
-          default: 2
-
-        use_segment_service:
-          name: "🧩 Use Segment Service"
-          description: |
-            Enable room/segment-based cleaning with configurable repeats.
-            Uses `dreame_vacuum.vacuum_clean_segment` service.
-
-            **Integration with Customized Cleaning:**
-            When customized_cleaning or cleaning_sequence is enabled, segment service call parameters (repeats, suction, water) are ignored by robot. Robot uses settings from Dreame app instead.
-
-            Disable if segments aren't detected or robot doesn't support segment cleaning.
-            Falls back to `vacuum.start` when disabled.
-          selector:
-            boolean:
-          default: true
-
-        use_cleaning_sequence:
-          name: "📋 Use Cleaning Sequence"
-          description: |
-            Enable room cleaning sequence from Dreame app settings (uses `order` attribute from map).
-            Optional: Cleans rooms in user-defined order from Dreame app.
-
-            **Fallback:** If disabled or no sequence defined, cleans all rooms without specific order.
-            **Requires:** Firmware ≥1156, `switch.{robot}_cleaning_sequence` available.
-          selector:
-            boolean:
-          default: true
-
-        use_customized_cleaning:
-          name: "⚙️ Use Customized Cleaning (Mop Modes Only)"
-          description: |
-            Enable room-specific cleaning settings from Dreame app (suction level, water volume, mop humidity, repeats per room).
-            Optional: Uses per-room settings defined in Dreame app.
-
-            **IMPORTANT:** Only used for Sweep+Mop programs. Sweep-only programs use sequence but NOT customized settings.
-            **Fallback:** If disabled or no room settings defined, uses global mode and blueprint repeat settings.
-            **Requires:** Firmware ≥1156, `switch.{robot}_customized_cleaning` available.
-          selector:
-            boolean:
-          default: true
-
-    # ========================================
-    # MAP FUNCTIONS
-    # ========================================
-    map_functions:
-      name: "Map Functions"
-      description: "Automatic map switching and temporary map handling."
-      icon: mdi:map
-      collapsed: true
-      input:
-        auto_switch_to_base_map:
-          name: "🗺️ Auto-Switch-Back to Base Map"
-          description: "Automatically switch back to base station map after room cleaning is completed."
-          selector:
-            boolean:
-          default: true
-
-        task_status_sensor_trigger:
-          name: "🔍 Task Status Sensor"
-          description: "Select task status sensor (e.g., `sensor.{vacuum_name}_task_status`). Leave empty to disable auto-switch."
-          selector:
-            entity:
-              filter:
-                - domain: sensor
-              multiple: false
-          default: []
-
-        auto_discard_temporary_map:
-          name: "🗺️ Auto-Discard Temporary Maps"
-          description: |
-            Automatically discard temporary maps before switching maps.
-            Allows seamless multi-floor operation when robot creates new maps.
-          selector:
-            boolean:
-          default: true
 
     # ========================================
     # LOCALIZATION
