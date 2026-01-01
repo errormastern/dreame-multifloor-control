@@ -96,7 +96,7 @@ Schedule entity for automatic sweep+mop cleaning at specified times.
 
 ## 🗺️ Map Functions
 
-![Map Functions](images/map-functions.png)
+![Map Functions](images/map_functions.png)
 
 ### 🗺️ Auto-Switch-Back to Base Map
 **Default:** Enabled
@@ -132,7 +132,7 @@ Automatically deletes temporary maps before switching to target map.
 
 ## 🎮 Control Functions
 
-![Control Functions](images/control-functions.png)
+![Control Functions](images/control_functions.png)
 
 ### ▶️ Smart Start/Pause/Resume Trigger
 
@@ -175,7 +175,7 @@ Switches cleaning mode to sweep+mop (full cleaning with mopping).
 
 ## ⚙️ Cleaning Settings
 
-![Cleaning Settings](images/cleaning-settings.png)
+![Cleaning Settings](images/cleaning_functions.png)
 
 ### 🔄 Global Cleaning Repeats (Fallback)
 **Default:** 2 (range: 1-3)
@@ -248,7 +248,7 @@ Uses per-room cleaning settings from Dreame app (suction level, water volume, mo
 
 ## 🔔 Notification Settings
 
-![Notification Settings](images/notification-settings.png)
+![Notification Settings](images/notification_settings.png)
 
 ### 🔔 Enable Notifications
 **Default:** Off
@@ -411,7 +411,7 @@ Volume level for critical alert sound.
 
 ## 🌐 Localization
 
-![Localization](images/localization.png)
+![Localization](images/localisation.png)
 
 Customise display texts for notifications and buttons in your preferred language.
 
@@ -487,7 +487,7 @@ Notification message explaining mop readiness issue and offering fallback option
 
 ## 🔧 Advanced Settings
 
-![Advanced Settings](images/advanced-settings.png)
+![Advanced Settings](images/advanced_settings.png)
 
 ### Timeouts
 
