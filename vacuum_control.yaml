@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
     **🤖 Dreame Vacuum – Multi-Floor Control**
-    *Version: 0.9.17*
+    *Version: 0.9.18*
 
     A Home Assistant blueprint for controlling Dreame vacuums across multiple floors.
     Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers. **Never care about the right robot settings for seamless multi-floor cleaning again.**
@@ -880,11 +880,17 @@ triggers:
   # ========================================
   # AUTO-SWITCH-BACK TO BASE MAP
   # ========================================
-  # Automatically switches back to base station map after room cleaning completion
-  # Requires task_status_sensor_trigger to be configured
+  # Automatically switches back to base station map when robot docks
+  # Triggers when vacuum returns to dock from any non-docked state
   - trigger: state
-    entity_id: !input task_status_sensor_trigger
-    to: "completed"
+    entity_id: !input vacuum_entity
+    to: "docked"
+    from:
+      - "cleaning"
+      - "returning"
+      - "paused"
+      - "error"
+      - "idle"
     id: auto_switch_to_base
 
   # ========================================
@@ -3060,13 +3066,6 @@ actions:
                 value_template: "{{ not auto_switch_to_base_enabled }}"
             then:
               - stop: "Auto-switch to base map disabled"
-
-          # Check: Task status sensor is configured
-          - if:
-              - condition: template
-                value_template: "{{ not has_value(task_status_sensor) }}"
-            then:
-              - stop: "Task status sensor not configured"
 
           # Check: Current map is NOT base station map
           - if:
