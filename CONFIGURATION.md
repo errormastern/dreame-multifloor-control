@@ -128,6 +128,37 @@ Automatically deletes temporary maps before switching to target map.
 
 > **Warning:** Disable only if you intentionally want to keep temporary maps for new floor mapping.
 
+### 🗺️ Map Switch by Name Trigger
+
+Switch to a map by its **name** instead of its slot number (Map 1-4). Use
+this for a dashboard button that should always mean "Wohnzimmer" (or any
+other floor), regardless of which slot Dreame currently assigns to it —
+Dreame can silently renumber saved-map slots after a rescan, which would
+otherwise make a slot-based button (e.g. Map 1) switch to the wrong floor.
+
+> [!NOTE]
+> This only affects **manual** map switching from a dashboard button.
+> Scheduled cleaning (per-map schedules under Map 1-4) is still bound to
+> map *slots*, not names, and is unaffected by this feature.
+
+**Setup:**
+1. Create a script (Settings → Automations & Scenes → Scripts) with one
+   action of type **"Event"**, e.g. event type `dreame_map_switch` and
+   event data `map_name: "{{ map_name }}"`, using a script **field**
+   `map_name` so the same script can be reused by every dashboard button.
+2. On each dashboard button, set `tap_action` to call that script,
+   passing the desired map name via the field (e.g. `Wohnzimmer`,
+   `Keller`, …).
+3. In this blueprint's **Map Functions** section, set **Map Switch by
+   Name Trigger** to an **Event** trigger listening for your event type
+   (e.g. `dreame_map_switch`).
+4. Set the trigger's **Trigger ID** to `fn_map_name` (required).
+
+**Validation:** the received name is checked against the vacuum's live
+list of saved map names (`select.<vacuum>_selected_map` options). An
+unrecognized name aborts with a "⚠️ Unknown Map Name" notification
+listing the valid names, instead of silently failing.
+
 ---
 
 ## 🎮 Control Functions
