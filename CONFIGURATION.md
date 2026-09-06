@@ -42,7 +42,7 @@ Time robot moves away from dock before pausing for manual transport.
 
 ---
 
-## 🏠 Map 1 / Map 2 / Map 3
+## 🏠 Map 1 / Map 2 / Map 3 / Map 4
 
 ![Map Configuration](images/map_configuration.png)
 
@@ -67,7 +67,7 @@ Trigger that switches to this map and starts cleaning workflow.
 **Configuration:**
 - Leave empty for schedule-only maps
 - Device/MQTT triggers: Action auto-detected from payload
-- State/Event triggers: **Must** set Trigger ID to `fn_map1` (or `fn_map2`, `fn_map3`)
+- State/Event triggers: **Must** set Trigger ID to `fn_map1` (or `fn_map2`, `fn_map3`, `fn_map4`)
 
 **Example triggers:**
 - MQTT button press

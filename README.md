@@ -1,6 +1,6 @@
 # 🤖 Dreame Vacuum – Multi-Floor Control
 
-[![Version](https://img.shields.io/badge/version-0.9.18-blue.svg)](https://github.com/errormastern/dreame-multifloor-control/releases)
+[![Version](https://img.shields.io/badge/version-0.10.1-blue.svg)](https://github.com/errormastern/dreame-multifloor-control/releases)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.10%2B-green.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 
@@ -11,7 +11,7 @@ A Home Assistant blueprint for controlling Dreame vacuums across multiple floors
 
 🤖 Auto-detection of vacuum entities (select vacuum, rest detected automatically)<br>
 ⚙️ Automatically verify and configure optimal robot settings prior to each cleaning cycle<br>
-📅 Per-map schedules with sweep/mop modes (3 maps, 6 schedules)<br>
+📅 Per-map schedules with sweep/mop modes (4 maps, 8 schedules)<br>
 🔔 Notification workflow with action buttons for transport<br>
 👥 Multi-recipient notifications with presence checking<br>
 🏠 Segment-based cleaning with configurable repeats<br>
@@ -108,7 +108,7 @@ Direct control via buttons, switches, or other triggers.
 | **Sweep Only Mode** | Sets cleaning mode to sweep-only for quick cleaning without mopping. |
 | **Sweep + Mop Mode** | Sets cleaning mode with mop enabled for full cleaning. |
 | **Smart Start/Pause/Resume** | Context-aware control – adapts to robot status. See details below. |
-| **Map 1 / Map 2 / Map 3** | Switches between floor maps for multi-floor setups. |
+| **Map 1 / Map 2 / Map 3 / Map 4** | Switches between floor maps for multi-floor setups. |
 
 
 ### ⚡ Trigger Setup
