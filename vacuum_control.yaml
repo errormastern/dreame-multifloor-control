@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
     **🤖 Dreame Vacuum – Multi-Floor Control**
-    *Version: 0.9.18*
+    *Version: 0.10.1*
 
     A Home Assistant blueprint for controlling Dreame vacuums across multiple floors.
     Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers. **Never care about the right robot settings for seamless multi-floor cleaning again.**
@@ -10,7 +10,7 @@ blueprint:
     **✨ Main Features:**
     🤖 Auto-detection of vacuum entities (select vacuum, rest auto-detected)
     ⚙️ Automatically verify and configure optimal robot settings prior to each cleaning cycle
-    📅 Per-map schedules with sweep/mop modes (3 maps, 6 schedules total)
+    📅 Per-map schedules with sweep/mop modes (4 maps, 8 schedules total)
     🔔 Notification workflow with action buttons for transport preparation
     👥 Multi-recipient notifications with presence checking
     ⏭️ Manual control via MQTT, device triggers, state changes, or events
@@ -117,7 +117,7 @@ blueprint:
 
             Create schedule helper first (Settings → Devices & Services → Helpers),
             then select here. Leave as "none" to disable.
-          default: "none"
+          default: []
           selector:
             entity:
               filter:
@@ -130,7 +130,7 @@ blueprint:
 
             Create schedule helper first (Settings → Devices & Services → Helpers),
             then select here. Leave as "none" to disable.
-          default: "none"
+          default: []
           selector:
             entity:
               filter:
@@ -180,7 +180,7 @@ blueprint:
 
             Create schedule helper first (Settings → Devices & Services → Helpers),
             then select here. Leave as "none" to disable.
-          default: "none"
+          default: []
           selector:
             entity:
               filter:
@@ -193,7 +193,7 @@ blueprint:
 
             Create schedule helper first (Settings → Devices & Services → Helpers),
             then select here. Leave as "none" to disable.
-          default: "none"
+          default: []
           selector:
             entity:
               filter:
@@ -243,7 +243,7 @@ blueprint:
 
             Create schedule helper first (Settings → Devices & Services → Helpers),
             then select here. Leave as "none" to disable.
-          default: "none"
+          default: []
           selector:
             entity:
               filter:
@@ -256,7 +256,70 @@ blueprint:
 
             Create schedule helper first (Settings → Devices & Services → Helpers),
             then select here. Leave as "none" to disable.
-          default: "none"
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: schedule
+
+    # ========================================
+    # MAP 4 CONFIGURATION
+    # ========================================
+    map_4_config:
+      name: "Map 4"
+      description: "Configure Map 4: trigger, cleaning settings, and schedules. Map name is auto-detected."
+      icon: mdi:home-floor-0
+      collapsed: true
+      input:
+        map_4_cleaning_repeats:
+          name: "🔄 Cleaning Repeats"
+          description: |
+            Number of cleaning passes per room/segment (1-3).
+
+            • **1:** Quick daily cleaning
+            • **2:** Normal cleaning (recommended)
+            • **3:** Deep/intensive cleaning
+          selector:
+            number:
+              min: 1
+              max: 3
+              step: 1
+              mode: slider
+              unit_of_measurement: "passes"
+          default: 2
+
+        map4_trigger:
+          name: "🔀 Map Switch Trigger (Optional)"
+          description: |
+            Trigger to switch to this map.
+
+            **MQTT/Device triggers:** Auto-detected
+            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_map4`
+          selector:
+            trigger:
+          default: []
+
+        map_4_sweep_schedule:
+          name: "📅 Sweep-Only Schedule (Optional)"
+          description: |
+            Schedule helper for automatic sweep-only cleaning.
+
+            Create schedule helper first (Settings → Devices & Services → Helpers),
+            then select here. Leave as "none" to disable.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: schedule
+
+        map_4_mop_schedule:
+          name: "📅 Sweep+Mop Schedule (Optional)"
+          description: |
+            Schedule helper for automatic sweep+mop cleaning.
+
+            Create schedule helper first (Settings → Devices & Services → Helpers),
+            then select here. Leave as "none" to disable.
+          default: []
           selector:
             entity:
               filter:
@@ -924,6 +987,11 @@ triggers:
   - triggers: !input map3_trigger
 
   # ========================================
+  # FUNCTION 7: Map 4 Switch
+  # ========================================
+  - triggers: !input map4_trigger
+
+  # ========================================
   # SCHEDULE TRIGGERS (Per-Map Scheduled Cleaning)
   # ========================================
   # Note: If schedule input is empty (default), trigger will never fire
@@ -959,6 +1027,17 @@ triggers:
     entity_id: !input map_3_mop_schedule
     to: "on"
     id: schedule_map3_mop
+
+  # Map 4 Schedules
+  - trigger: state
+    entity_id: !input map_4_sweep_schedule
+    to: "on"
+    id: schedule_map4_sweep
+
+  - trigger: state
+    entity_id: !input map_4_mop_schedule
+    to: "on"
+    id: schedule_map4_mop
 
   # ========================================
   # NOTIFICATION ACTION TRIGGERS
@@ -1003,6 +1082,18 @@ triggers:
       action: "PREPARE_MAP3_MOP"
     id: notification_prepare_map3_mop
 
+  - trigger: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: "PREPARE_MAP4_SWEEP"
+    id: notification_prepare_map4_sweep
+
+  - trigger: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: "PREPARE_MAP4_MOP"
+    id: notification_prepare_map4_mop
+
   # Sweep-only fallback triggers (when mop not ready)
   - trigger: event
     event_type: mobile_app_notification_action
@@ -1021,6 +1112,12 @@ triggers:
     event_data:
       action: "PREPARE_MAP3_SWEEP_FALLBACK"
     id: notification_prepare_map3_sweep_fallback
+
+  - trigger: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: "PREPARE_MAP4_SWEEP_FALLBACK"
+    id: notification_prepare_map4_sweep_fallback
 
   - trigger: event
     event_type: mobile_app_notification_action
@@ -1120,10 +1217,19 @@ variables:
       Map 3
     {% endif %}
 
+  map_4_name: >
+    {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_4' %}
+    {% if has_value(map_entity) %}
+      {% set custom = state_attr(map_entity, 'custom_name') %}
+      {{ custom if custom else state_attr(map_entity, 'map_name') }}
+    {% else %}
+      Map 4
+    {% endif %}
+
   # Auto-detect base station map by finding map with charger_position attribute
   base_station_map: >
     {% set ns = namespace(found='') %}
-    {% for i in range(1, 4) %}
+    {% for i in range(1, 5) %}
       {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_' ~ i %}
       {% if has_value(map_entity) %}
         {% set charger_pos = state_attr(map_entity, 'charger_position') %}
@@ -1159,6 +1265,12 @@ variables:
       sweep_schedule: !input map_3_sweep_schedule
       mop_schedule: !input map_3_mop_schedule
       has_base_station: "{{ map_3_name == base_station_map }}"
+    map_4:
+      name: "{{ map_4_name }}"
+      cleaning_repeats: !input map_4_cleaning_repeats
+      sweep_schedule: !input map_4_sweep_schedule
+      mop_schedule: !input map_4_mop_schedule
+      has_base_station: "{{ map_4_name == base_station_map }}"
 
   # ========================================
   # CUSTOMIZED CLEANING FEATURE DETECTION
@@ -1210,7 +1322,8 @@ variables:
     {% set map_lookup = {
       map_1_name: map_config.map_1,
       map_2_name: map_config.map_2,
-      map_3_name: map_config.map_3
+      map_3_name: map_config.map_3,
+      map_4_name: map_config.map_4
     } %}
     {% set config = map_lookup.get(current_map_name, map_config.map_1) %}
     {{ config if config is mapping and config.name is defined else map_config.map_1 }}
@@ -1305,6 +1418,8 @@ variables:
   map_2_mop_schedule_entity: !input map_2_mop_schedule
   map_3_sweep_schedule_entity: !input map_3_sweep_schedule
   map_3_mop_schedule_entity: !input map_3_mop_schedule
+  map_4_sweep_schedule_entity: !input map_4_sweep_schedule
+  map_4_mop_schedule_entity: !input map_4_mop_schedule
 
   # Detect if this is a schedule-triggered cleaning
   is_schedule_trigger: >
@@ -1326,17 +1441,19 @@ variables:
     {% if trigger.id in ['schedule_map1_sweep', 'schedule_map1_mop'] %}1
     {% elif trigger.id in ['schedule_map2_sweep', 'schedule_map2_mop'] %}2
     {% elif trigger.id in ['schedule_map3_sweep', 'schedule_map3_mop'] %}3
+    {% elif trigger.id in ['schedule_map4_sweep', 'schedule_map4_mop'] %}4
     {% else %}unknown{% endif %}
 
   schedule_trigger_mode: >
-    {% if trigger.id in ['schedule_map1_sweep', 'schedule_map2_sweep', 'schedule_map3_sweep'] %}sweep
-    {% elif trigger.id in ['schedule_map1_mop', 'schedule_map2_mop', 'schedule_map3_mop'] %}mop
+    {% if trigger.id in ['schedule_map1_sweep', 'schedule_map2_sweep', 'schedule_map3_sweep', 'schedule_map4_sweep'] %}sweep
+    {% elif trigger.id in ['schedule_map1_mop', 'schedule_map2_mop', 'schedule_map3_mop', 'schedule_map4_mop'] %}mop
     {% else %}unknown{% endif %}
 
   schedule_trigger_map_name: >
     {% if trigger.id in ['schedule_map1_sweep', 'schedule_map1_mop'] %}{{ map_1_name }}
     {% elif trigger.id in ['schedule_map2_sweep', 'schedule_map2_mop'] %}{{ map_2_name }}
     {% elif trigger.id in ['schedule_map3_sweep', 'schedule_map3_mop'] %}{{ map_3_name }}
+    {% elif trigger.id in ['schedule_map4_sweep', 'schedule_map4_mop'] %}{{ map_4_name }}
     {% else %}Unknown{% endif %}
 
   # ========================================
@@ -1354,6 +1471,7 @@ variables:
     "4_single": "fn_map1"
     "5_single": "fn_map2"
     "6_single": "fn_map3"
+    "7_single": "fn_map4"
 
   triggered_function: >
     {% if trigger.id is defined and trigger.id != '' %}
@@ -1372,6 +1490,7 @@ variables:
       'fn_map1': 'Map 1',
       'fn_map2': 'Map 2',
       'fn_map3': 'Map 3',
+      'fn_map4': 'Map 4',
       'setup_required': 'Setup Required',
       'auto_switch_to_base': 'Auto-Switch'
     } %}
@@ -2154,6 +2273,62 @@ actions:
                     └─ ✔ **Map:** {{ _old_map }} → **{{ map_3_name }}**{% else %}└─ ✔ **Map:** {{ _old_map }} → **{{ map_3_name }}**{% endif %}
 
       # ========================================
+      # FUNCTION 7: Map 4 Switch (fn_map4)
+      # ========================================
+      - conditions:
+          - condition: template
+            value_template: "{{ triggered_function == 'fn_map4' }}"
+        sequence:
+          # Busy check - ignore trigger if robot is busy
+          - if: "{{ is_busy }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "⏳ Busy"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    **Function:** fn_map4
+                    **Status:** {{ current_base_status if current_base_status == 'washing' else current_status }}
+
+                    ❌ Automation aborted
+              - stop: "Robot busy"
+
+          # Track old values
+          - variables:
+              _old_map: "{{ states(selected_map_select) | default('unknown') }}"
+              _had_temp_map: "{{ auto_discard_temp_map and has_temporary_map }}"
+
+          # Discard temporary map if exists and auto-discard enabled
+          - if: "{{ _had_temp_map }}"
+            then:
+              - action: dreame_vacuum.vacuum_discard_temporary_map
+                continue_on_error: true
+                target:
+                  entity_id: "{{ vacuum_entity }}"
+              - delay:
+                  seconds: 2
+
+          - action: select.select_option
+            continue_on_error: true
+            target:
+              entity_id: "{{ selected_map_select }}"
+            data:
+              option: "{{ map_4_name }}"
+
+          # Summary notification (Level 1+)
+          - if: "{{ debug_info }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "🗺️ {{ map_4_name }}"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    {% if _had_temp_map %}├─ ✔ **Discard Temp:** yes
+                    └─ ✔ **Map:** {{ _old_map }} → **{{ map_4_name }}**{% else %}└─ ✔ **Map:** {{ _old_map }} → **{{ map_4_name }}**{% endif %}
+
+      # ========================================
       # SCHEDULE-TRIGGERED CLEANING FUNCTIONS
       # ========================================
       # These functions are triggered by schedule entities (state: "on")
@@ -2172,10 +2347,11 @@ actions:
               _map_num: >
                 {% if 'map1' in trigger.id %}1
                 {% elif 'map2' in trigger.id %}2
-                {% else %}3{% endif %}
+                {% elif 'map3' in trigger.id %}3
+                {% else %}4{% endif %}
               _is_mop: "{{ 'mop' in trigger.id and 'fallback' not in trigger.id }}"
               target_mode: "{{ mode_sweeping_mopping if _is_mop else mode_sweeping }}"
-              target_map_name: "{{ [map_1_name, map_2_name, map_3_name][_map_num - 1] }}"
+              target_map_name: "{{ [map_1_name, map_2_name, map_3_name, map_4_name][_map_num - 1] }}"
               target_map_config: "{{ map_config['map_' ~ _map_num] }}"
               schedule_label: "Map {{ _map_num }} {{ 'Mop' if _is_mop else 'Sweep' }}"
               prepare_action_id: "PREPARE_MAP{{ _map_num }}_{{ 'MOP' if _is_mop else 'SWEEP' }}"
@@ -2187,7 +2363,9 @@ actions:
                   'schedule_map2_sweep': map_2_sweep_schedule_entity,
                   'schedule_map2_mop': map_2_mop_schedule_entity,
                   'schedule_map3_sweep': map_3_sweep_schedule_entity,
-                  'schedule_map3_mop': map_3_mop_schedule_entity
+                  'schedule_map3_mop': map_3_mop_schedule_entity,
+                  'schedule_map4_sweep': map_4_sweep_schedule_entity,
+                  'schedule_map4_mop': map_4_mop_schedule_entity
                 } %}
                 {{ entities.get(trigger.id, 'none') }}
 
@@ -2213,8 +2391,8 @@ actions:
               - stop: "Schedule aborted: Robot error {{ error_message }}"
                 error: true
 
-          # CHECK 2: Skip if schedule entity is "none"
-          - if: "{{ _schedule_entity == 'none' }}"
+          # CHECK 2: Skip if schedule entity is unset ("none", [] or empty)
+          - if: "{{ not _schedule_entity or _schedule_entity in ['none', '[]'] }}"
             then:
               - stop: "Schedule not configured"
 
@@ -2534,10 +2712,11 @@ actions:
               _map_num: >
                 {% if 'map1' in trigger.id %}1
                 {% elif 'map2' in trigger.id %}2
-                {% else %}3{% endif %}
+                {% elif 'map3' in trigger.id %}3
+                {% else %}4{% endif %}
               _is_mop: "{{ 'mop' in trigger.id and 'fallback' not in trigger.id }}"
               notification_target_mode: "{{ mode_sweeping_mopping if _is_mop else mode_sweeping }}"
-              notification_target_map_name: "{{ [map_1_name, map_2_name, map_3_name][_map_num - 1] }}"
+              notification_target_map_name: "{{ [map_1_name, map_2_name, map_3_name, map_4_name][_map_num - 1] }}"
               notification_cleaning_repeats: "{{ map_config['map_' ~ _map_num].cleaning_repeats }}"
               schedule_label: "Map {{ _map_num }} {{ 'Mop' if _is_mop else 'Sweep' }}"
 
@@ -2924,7 +3103,7 @@ actions:
           # Safety check: Validate selected map
           - if:
               - condition: template
-                value_template: "{{ states(selected_map_select) not in [map_1_name, map_2_name, map_3_name] }}"
+                value_template: "{{ states(selected_map_select) not in [map_1_name, map_2_name, map_3_name, map_4_name] }}"
             then:
               # Invalid map → Emergency pause (always show)
               - action: vacuum.pause
@@ -2942,7 +3121,7 @@ actions:
                     └─ ✔ **Pause:** emergency
 
                     ❌ Automation aborted
-                    **Valid:** {{ map_1_name }}, {{ map_2_name }}, {{ map_3_name }}
+                    **Valid:** {{ map_1_name }}, {{ map_2_name }}, {{ map_3_name }}, {{ map_4_name }}
 
               - stop: "Emergency pause - invalid map selected"
                 error: true
