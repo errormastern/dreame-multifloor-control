@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
     **🤖 Dreame Vacuum – Multi-Floor Control**
-    *Version: 0.10.1*
+    *Version: 0.11.0*
 
     A Home Assistant blueprint for controlling Dreame vacuums across multiple floors.
     Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers. **Never care about the right robot settings for seamless multi-floor cleaning again.**
@@ -19,6 +19,7 @@ blueprint:
     💧 Mop readiness check (mop pad + water tank) with sweep-only fallback
     🗺️ Auto-discard temporary maps for seamless multi-floor operation
     🏠 Auto-Switch-Back to Base Map after multi-floor cleaning
+    🗺️ Switch maps by name (not slot) — resilient to Dreame's internal map renumbering
 
     **Requirements:**
     • Home Assistant ≥ 2024.10.0
@@ -359,6 +360,25 @@ blueprint:
           selector:
             boolean:
           default: true
+
+        map_by_name_trigger:
+          name: "🗺️ Map Switch by Name Trigger (Optional)"
+          description: |
+            Switch to a map by its NAME instead of its slot number (Map 1-4).
+            Use this for a dashboard button that should always mean e.g.
+            "Wohnzimmer", even if Dreame internally moves it to a different
+            map slot after a rescan.
+
+            **Setup:** Use an Event trigger. The event's data must contain a
+            `map_name` key with the exact map name (as shown in the Dreame
+            app / this vacuum's map selector). A dashboard button can call a
+            small script that fires this event (script action type "Event"),
+            passing the map name as a field — see documentation.
+
+            ⚠️ **Required:** Set this trigger's Trigger ID to `fn_map_name`.
+          selector:
+            trigger:
+          default: []
 
     # ========================================
     # CONTROL FUNCTIONS
@@ -992,6 +1012,11 @@ triggers:
   - triggers: !input map4_trigger
 
   # ========================================
+  # FUNCTION 8: Map Switch by Name
+  # ========================================
+  - triggers: !input map_by_name_trigger
+
+  # ========================================
   # SCHEDULE TRIGGERS (Per-Map Scheduled Cleaning)
   # ========================================
   # Note: If schedule input is empty (default), trigger will never fire
@@ -1491,6 +1516,7 @@ variables:
       'fn_map2': 'Map 2',
       'fn_map3': 'Map 3',
       'fn_map4': 'Map 4',
+      'fn_map_name': 'Map Switch (by Name)',
       'setup_required': 'Setup Required',
       'auto_switch_to_base': 'Auto-Switch'
     } %}
@@ -2327,6 +2353,84 @@ actions:
 
                     {% if _had_temp_map %}├─ ✔ **Discard Temp:** yes
                     └─ ✔ **Map:** {{ _old_map }} → **{{ map_4_name }}**{% else %}└─ ✔ **Map:** {{ _old_map }} → **{{ map_4_name }}**{% endif %}
+
+      # ========================================
+      # FUNCTION 8: Map Switch by Name (fn_map_name)
+      # ========================================
+      - conditions:
+          - condition: template
+            value_template: "{{ triggered_function == 'fn_map_name' }}"
+        sequence:
+          # Extract target map name from the event payload
+          - variables:
+              _target_map_name_raw: "{{ trigger.event.data.map_name if trigger.event is defined and trigger.event.data is defined else '' }}"
+              _target_map_name: "{{ _target_map_name_raw | default('') | trim }}"
+              _valid_map_names: "{{ state_attr(selected_map_select, 'options') | default([]) }}"
+
+          # Busy check - ignore trigger if robot is busy
+          - if: "{{ is_busy }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "⏳ Busy"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    **Function:** fn_map_name
+                    **Status:** {{ current_base_status if current_base_status == 'washing' else current_status }}
+
+                    ❌ Automation aborted
+              - stop: "Robot busy"
+
+          # Validate the received name against the select entity's live options
+          # (skip strict validation if attribute unavailable - permissive fallback)
+          - if: "{{ _valid_map_names | length > 0 and _target_map_name not in _valid_map_names }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "⚠️ Unknown Map Name"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    **Received:** "{{ _target_map_name }}"
+                    **Valid names:** {{ _valid_map_names | join(', ') }}
+
+                    ❌ Automation aborted
+              - stop: "Unknown map name"
+
+          # Track old values
+          - variables:
+              _old_map: "{{ states(selected_map_select) | default('unknown') }}"
+              _had_temp_map: "{{ auto_discard_temp_map and has_temporary_map }}"
+
+          # Discard temporary map if exists and auto-discard enabled
+          - if: "{{ _had_temp_map }}"
+            then:
+              - action: dreame_vacuum.vacuum_discard_temporary_map
+                continue_on_error: true
+                target:
+                  entity_id: "{{ vacuum_entity }}"
+              - delay:
+                  seconds: 2
+
+          - action: select.select_option
+            continue_on_error: true
+            target:
+              entity_id: "{{ selected_map_select }}"
+            data:
+              option: "{{ _target_map_name }}"
+
+          # Summary notification (Level 1+)
+          - if: "{{ debug_info }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "🗺️ {{ _target_map_name }}"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    {% if _had_temp_map %}├─ ✔ **Discard Temp:** yes
+                    └─ ✔ **Map:** {{ _old_map }} → **{{ _target_map_name }}**{% else %}└─ ✔ **Map:** {{ _old_map }} → **{{ _target_map_name }}**{% endif %}
 
       # ========================================
       # SCHEDULE-TRIGGERED CLEANING FUNCTIONS
