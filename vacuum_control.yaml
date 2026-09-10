@@ -1338,6 +1338,15 @@ variables:
   global_cleaning_repeats: !input global_cleaning_repeats
   cleaning_states_raw: !input cleaning_states
   cleaning_states: "{{ cleaning_states_raw.split(',') }}"
+
+  # States that mean "the job has actually started" = cleaning_states minus 'returning'.
+  # 'returning' MUST be excluded: mopping_after_sweeping goes cleaning -> returning ->
+  # cleaning mid-job (the robot hunts for a dock to rinse the mop between the sweep and
+  # the mop pass, ~1 min when the map has no base station), and a docking robot reports
+  # 'returning' too. The default cleaning_states list is a union of the
+  # sensor.{robot}_status vocabulary (cleaning/room_cleaning/zone_cleaning) and the
+  # sensor.{robot}_state vocabulary (sweeping/mopping/...), so one list serves both.
+  start_detect_states: "{{ cleaning_states | map('trim') | reject('eq', 'returning') | list }}"
   paused_states_raw: !input paused_states
   paused_states: "{{ paused_states_raw.split(',') }}"
   error_states_raw: !input error_states
@@ -2136,15 +2145,24 @@ actions:
                         target:
                           entity_id: "{{ vacuum_entity }}"
 
-                  # Wait for robot to start cleaning
-                  - variables:
-                      expected_cleaning_states: >
-                        {% if current_mode == mode_sweeping %}['sweeping']
-                        {% elif current_mode == mode_sweeping_mopping %}['sweeping_and_mopping', 'mopping']
-                        {% else %}['sweeping', 'mopping', 'sweeping_and_mopping']{% endif %}
-                  - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_state') in expected_cleaning_states }}"
+                  # Wait for robot to start cleaning.
+                  #
+                  # NEVER narrow this per cleaning mode. mopping_after_sweeping reports
+                  # 'sweeping' first (sweep pass) and only later 'mopping' - it never
+                  # reports 'sweeping_and_mopping'. The previous per-mode list missed
+                  # that, and with continue_on_timeout: false a missed match aborted the
+                  # run BEFORE the delay and vacuum.pause below - leaving the robot
+                  # driving around an upper floor with nobody coming to carry it.
+                  #
+                  # continue_on_timeout is true on purpose: the pause IS the safety
+                  # action, so a failed detection must not skip it. vacuum.pause on a
+                  # robot that never started is harmless and already tolerant of errors.
+                  - wait_template: >
+                      {{ states('sensor.' ~ vacuum_base_name ~ '_state') in start_detect_states }}
                     timeout: 30
-                    continue_on_timeout: false
+                    continue_on_timeout: true
+                  - variables:
+                      _start_detected: "{{ wait.completed }}"
 
                   # Delay to allow robot to move away from station
                   - delay:
@@ -2170,7 +2188,7 @@ actions:
                             {% endif %}{% if has_customized_cleaning %}├─ ✔ **Customized:** {% if _customized_changed %}off → **on**{% else %}{{ 'on' if is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') else 'off' }}{% endif %}
                             {% endif %}{% if has_cleaning_sequence %}├─ ✔ **Sequence:** {% if _sequence_changed %}off → **on**{% else %}{{ 'on' if is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') else 'off' }}{% endif %}
                             {% endif %}{% if has_value(self_clean_switch) %}├─ ✔ **Self-Clean:** {% if _self_clean_changed %}on → **off**{% else %}off{% endif %}
-                            {% endif %}├─ ✔ **Start:** {{ states('sensor.' ~ vacuum_base_name ~ '_state') }}
+                            {% endif %}├─ {% if _start_detected %}✔{% else %}⚠️{% endif %} **Start:** {{ states('sensor.' ~ vacuum_base_name ~ '_state') }}{% if not _start_detected %} (not detected within 30s){% endif %}
                             ├─ ✔ **Delay:** {{ pause_delay_after_undock }}s
                             └─ ✔ **Pause:** paused
 
@@ -3013,9 +3031,12 @@ actions:
                   entity_id: "{{ vacuum_entity }}"
 
           # Step 6: Wait for cleaning state, delay, pause
-          - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') in cleaning_states }}"
+          # Uses start_detect_states (cleaning_states without 'returning') so a robot
+          # heading back to the dock is not mistaken for a started job, and continues
+          # on timeout because the pause below is the safety action - see fn_start.
+          - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_status') in start_detect_states }}"
             timeout: "{{ mop_start_timeout if _is_mop else sweep_start_timeout }}"
-            continue_on_timeout: false
+            continue_on_timeout: true
           - if: "{{ pause_delay_after_undock > 0 }}"
             then:
               - delay:
