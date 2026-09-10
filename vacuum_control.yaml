@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
     **🤖 Dreame Vacuum – Multi-Floor Control**
-    *Version: 0.11.0*
+    *Version: 0.12.0*
 
     A Home Assistant blueprint for controlling Dreame vacuums across multiple floors.
     Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers. **Never care about the right robot settings for seamless multi-floor cleaning again.**
@@ -78,10 +78,25 @@ blueprint:
     # ========================================
     map_1_config:
       name: "Map 1"
-      description: "Configure Map 1: trigger, cleaning settings, and schedules. Map name is auto-detected."
+      description: "Configure Map 1: which map it is, its trigger, cleaning settings, and schedules."
       icon: mdi:home-floor-1
       collapsed: true
       input:
+        map_1_name_override:
+          name: "🏷️ Map Name"
+          description: |
+            Name of the map this section configures, exactly as shown in
+            `select.{robot}_selected_map` (e.g. `Wohnzimmer`).
+
+            **Why by name:** map slots re-sort whenever the robot auto-creates a map.
+            Naming the map keeps this section's schedules, trigger and repeats on the
+            floor you meant; a slot binding silently follows the re-sort instead.
+
+            Leave empty to fall back to whichever map currently sits in slot 1.
+          selector:
+            text:
+          default: ""
+
         map_1_cleaning_repeats:
           name: "🔄 Cleaning Repeats"
           description: |
@@ -145,10 +160,25 @@ blueprint:
     # ========================================
     map_2_config:
       name: "Map 2"
-      description: "Configure Map 2: trigger, cleaning settings, and schedules. Map name is auto-detected."
+      description: "Configure Map 2: which map it is, its trigger, cleaning settings, and schedules."
       icon: mdi:home-floor-2
       collapsed: true
       input:
+        map_2_name_override:
+          name: "🏷️ Map Name"
+          description: |
+            Name of the map this section configures, exactly as shown in
+            `select.{robot}_selected_map` (e.g. `Wohnzimmer`).
+
+            **Why by name:** map slots re-sort whenever the robot auto-creates a map.
+            Naming the map keeps this section's schedules, trigger and repeats on the
+            floor you meant; a slot binding silently follows the re-sort instead.
+
+            Leave empty to fall back to whichever map currently sits in slot 2.
+          selector:
+            text:
+          default: ""
+
         map_2_cleaning_repeats:
           name: "🔄 Cleaning Repeats"
           description: |
@@ -212,10 +242,25 @@ blueprint:
     # ========================================
     map_3_config:
       name: "Map 3"
-      description: "Configure Map 3: trigger, cleaning settings, and schedules. Map name is auto-detected."
+      description: "Configure Map 3: which map it is, its trigger, cleaning settings, and schedules."
       icon: mdi:home-floor-3
       collapsed: true
       input:
+        map_3_name_override:
+          name: "🏷️ Map Name"
+          description: |
+            Name of the map this section configures, exactly as shown in
+            `select.{robot}_selected_map` (e.g. `Wohnzimmer`).
+
+            **Why by name:** map slots re-sort whenever the robot auto-creates a map.
+            Naming the map keeps this section's schedules, trigger and repeats on the
+            floor you meant; a slot binding silently follows the re-sort instead.
+
+            Leave empty to fall back to whichever map currently sits in slot 3.
+          selector:
+            text:
+          default: ""
+
         map_3_cleaning_repeats:
           name: "🔄 Cleaning Repeats"
           description: |
@@ -279,10 +324,25 @@ blueprint:
     # ========================================
     map_4_config:
       name: "Map 4"
-      description: "Configure Map 4: trigger, cleaning settings, and schedules. Map name is auto-detected."
+      description: "Configure Map 4: which map it is, its trigger, cleaning settings, and schedules."
       icon: mdi:home-floor-0
       collapsed: true
       input:
+        map_4_name_override:
+          name: "🏷️ Map Name"
+          description: |
+            Name of the map this section configures, exactly as shown in
+            `select.{robot}_selected_map` (e.g. `Wohnzimmer`).
+
+            **Why by name:** map slots re-sort whenever the robot auto-creates a map.
+            Naming the map keeps this section's schedules, trigger and repeats on the
+            floor you meant; a slot binding silently follows the re-sort instead.
+
+            Leave empty to fall back to whichever map currently sits in slot 4.
+          selector:
+            text:
+          default: ""
+
         map_4_cleaning_repeats:
           name: "🔄 Cleaning Repeats"
           description: |
@@ -437,6 +497,35 @@ blueprint:
             trigger:
           default: []
 
+        map_named_trigger:
+          name: "🗺️ Switch Map By Name Trigger (Optional)"
+          description: |
+            Switches to a map identified by its NAME, instead of by a Map section.
+
+            Prefer this over the per-section map triggers when something outside the
+            blueprint decides which map to clean - a dashboard button, a script, a
+            voice command. A caller cannot know which section holds which map, and a
+            caller that resolves the name to a slot itself breaks as soon as the maps
+            re-sort.
+
+            ```yaml
+            trigger: event
+            event_type: dreame_map
+            event_data:
+              fn: map_named    # matched
+            id: fn_map_named
+            ```
+
+            Your caller sends the map name in the SAME event:
+            • `map` — exactly as shown in `select.{robot}_selected_map`
+
+            An unknown name aborts with a notification listing the available maps.
+
+            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_map_named`
+          selector:
+            trigger:
+          default: []
+
         room_trigger:
           name: "🚪 Single Room Cleaning Trigger (Optional)"
           description: |
@@ -455,7 +544,7 @@ blueprint:
             ```
 
             Your script sends, in the SAME event:
-            • `map`  — map slot 1-4
+            • `map`  — Map section 1-4 (the blueprint's Map 1..4 config sections)
             • `room` — room id on THAT map (from the map camera's `rooms` attribute)
             • `mode` — `sweep` or `mop`
 
@@ -1050,6 +1139,12 @@ triggers:
   - triggers: !input room_trigger
 
   # ========================================
+  # FUNCTION 9: Switch Map By Name
+  # ========================================
+  # Carries the map name in the event data - see the map_named_trigger input.
+  - triggers: !input map_named_trigger
+
+  # ========================================
   # FUNCTION 3: Smart Start/Pause/Resume
   # ========================================
   - triggers: !input start_trigger
@@ -1270,43 +1365,71 @@ variables:
   # ========================================
   # MAP CONFIGURATION (Fully Auto-Detected)
   # ========================================
-  # Auto-detect all map names from map camera entities
-  # Format: camera.{robot}_map_1, _map_2, etc.
-  # Extracts: custom_name (if set) or map_name (default)
+  # A map section is bound to a map by NAME when one is configured, and only falls
+  # back to "whatever currently sits in slot N" when it is not. Slots are an index
+  # into the ordered list of saved maps and re-sort whenever the robot auto-creates
+  # a map - which silently moves a section's schedules and trigger to another floor.
+  # Names survive that, so everything downstream (map_config, schedules, map switch,
+  # base station comparison) keys off map_N_name and needs no further change.
+  map_1_name_input: !input map_1_name_override
+  map_2_name_input: !input map_2_name_override
+  map_3_name_input: !input map_3_name_override
+  map_4_name_input: !input map_4_name_override
+
   map_1_name: >
-    {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_1' %}
-    {% if has_value(map_entity) %}
-      {% set custom = state_attr(map_entity, 'custom_name') %}
-      {{ custom if custom else state_attr(map_entity, 'map_name') }}
+    {% set cfg = (map_1_name_input | default('', true)) | string | trim %}
+    {% if cfg != '' %}
+      {{ cfg }}
     {% else %}
-      Map 1
+      {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_1' %}
+      {% if has_value(map_entity) %}
+        {% set custom = state_attr(map_entity, 'custom_name') %}
+        {{ custom if custom else state_attr(map_entity, 'map_name') }}
+      {% else %}
+        Map 1
+      {% endif %}
     {% endif %}
 
   map_2_name: >
-    {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_2' %}
-    {% if has_value(map_entity) %}
-      {% set custom = state_attr(map_entity, 'custom_name') %}
-      {{ custom if custom else state_attr(map_entity, 'map_name') }}
+    {% set cfg = (map_2_name_input | default('', true)) | string | trim %}
+    {% if cfg != '' %}
+      {{ cfg }}
     {% else %}
-      Map 2
+      {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_2' %}
+      {% if has_value(map_entity) %}
+        {% set custom = state_attr(map_entity, 'custom_name') %}
+        {{ custom if custom else state_attr(map_entity, 'map_name') }}
+      {% else %}
+        Map 2
+      {% endif %}
     {% endif %}
 
   map_3_name: >
-    {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_3' %}
-    {% if has_value(map_entity) %}
-      {% set custom = state_attr(map_entity, 'custom_name') %}
-      {{ custom if custom else state_attr(map_entity, 'map_name') }}
+    {% set cfg = (map_3_name_input | default('', true)) | string | trim %}
+    {% if cfg != '' %}
+      {{ cfg }}
     {% else %}
-      Map 3
+      {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_3' %}
+      {% if has_value(map_entity) %}
+        {% set custom = state_attr(map_entity, 'custom_name') %}
+        {{ custom if custom else state_attr(map_entity, 'map_name') }}
+      {% else %}
+        Map 3
+      {% endif %}
     {% endif %}
 
   map_4_name: >
-    {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_4' %}
-    {% if has_value(map_entity) %}
-      {% set custom = state_attr(map_entity, 'custom_name') %}
-      {{ custom if custom else state_attr(map_entity, 'map_name') }}
+    {% set cfg = (map_4_name_input | default('', true)) | string | trim %}
+    {% if cfg != '' %}
+      {{ cfg }}
     {% else %}
-      Map 4
+      {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_4' %}
+      {% if has_value(map_entity) %}
+        {% set custom = state_attr(map_entity, 'custom_name') %}
+        {{ custom if custom else state_attr(map_entity, 'map_name') }}
+      {% else %}
+        Map 4
+      {% endif %}
     {% endif %}
 
   # ========================================
@@ -1627,6 +1750,7 @@ variables:
       'fn_map3': 'Map 3',
       'fn_map4': 'Map 4',
       'fn_room': 'Single Room',
+      'fn_map_named': 'Switch Map',
       'setup_required': 'Setup Required',
       'auto_switch_to_base': 'Auto-Switch'
     } %}
@@ -1700,13 +1824,31 @@ variables:
       {{ map_config['map_' ~ room_target_map_num].cleaning_repeats | default(global_cleaning_repeats) | default(2) }}
     {% else %}{{ global_cleaning_repeats | default(2) }}{% endif %}
 
+  # Which camera slot currently holds the target map. Resolved by NAME, because a map
+  # section is bound to a name and the slot it occupies can change under us - the
+  # event's `map` is the section number, not the camera index.
+  room_target_slot: >
+    {% set target = room_target_map_name | string | trim %}
+    {% set ns = namespace(slot=0) %}
+    {% if target != '' %}
+      {% for i in range(1, 5) %}
+        {% set cam = 'camera.' ~ vacuum_base_name ~ '_map_' ~ i %}
+        {% if has_value(cam) %}
+          {% set n = (state_attr(cam, 'custom_name') or state_attr(cam, 'map_name') or '') | string | trim %}
+          {% if n == target %}{% set ns.slot = i %}{% endif %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+    {{ ns.slot }}
+
   # Rooms come from the TARGET map's own SLOT camera, never the live camera.
   # The slot camera is unaffected by map switching, so - unlike the map_segments
   # above, which is computed at trigger time from the pre-switch live map - this is
   # not stale when the target map is not the one currently loaded.
   room_target_rooms: >
-    {% if 1 <= room_target_map_num <= 4 %}
-      {% set cam = 'camera.' ~ vacuum_base_name ~ '_map_' ~ room_target_map_num %}
+    {% set slot = room_target_slot | int(0) %}
+    {% if 1 <= slot <= 4 %}
+      {% set cam = 'camera.' ~ vacuum_base_name ~ '_map_' ~ slot %}
       {% set rooms = state_attr(cam, 'rooms') if has_value(cam) else none %}
       {{ rooms if rooms is mapping else {} }}
     {% else %}{{ {} }}{% endif %}
@@ -2567,6 +2709,98 @@ actions:
                     └─ ✔ **Map:** {{ _old_map }} → **{{ map_4_name }}**{% else %}└─ ✔ **Map:** {{ _old_map }} → **{{ map_4_name }}**{% endif %}
 
       # ========================================
+      # FUNCTION 9: Switch Map By Name (fn_map_named)
+      # ========================================
+      # Slot-free counterpart to fn_map1..fn_map4: the caller names the map instead
+      # of picking a section. Needed because a section is bound to a NAME, so
+      # "section 3" and "camera slot 3" are not the same thing once maps re-sort -
+      # a caller that resolved a name to a slot itself would switch to the wrong
+      # floor. Switching only needs the name, so nothing else has to be resolved.
+      - conditions:
+          - condition: template
+            value_template: "{{ triggered_function == 'fn_map_named' }}"
+        sequence:
+          - variables:
+              _req_map: >
+                {{ (trigger.event.data.get('map', '') if room_evt_ok else '') | string | trim }}
+              _live_maps: >
+                {% set ns = namespace(n=[]) %}
+                {% for i in range(1, 5) %}
+                  {% set cam = 'camera.' ~ vacuum_base_name ~ '_map_' ~ i %}
+                  {% if has_value(cam) %}
+                    {% set ns.n = ns.n + [(state_attr(cam, 'custom_name') or state_attr(cam, 'map_name') or '') | string | trim] %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.n | reject('eq', '') | list }}
+
+          - if: "{{ is_busy }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  notification_id: "dreame_room_busy_{{ vacuum_base_name }}"
+                  title: "⏳ Busy"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    **Function:** Switch Map
+                    **Status:** {{ current_base_status if current_base_status == 'washing' else current_status }}
+
+                    ❌ Automation aborted
+              - stop: "Robot busy"
+
+          - if: "{{ _req_map == '' or _req_map not in _live_maps }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  notification_id: "dreame_map_named_{{ vacuum_base_name }}"
+                  title: "⚠️ Map Not Found"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    ├─ ⚠️ **Requested:** `{{ _req_map }}`
+                    └─ ○ **Available:** {{ _live_maps | join(', ') }}
+
+                    ❌ Automation aborted
+              - stop: "Unknown map name"
+                error: true
+
+          - variables:
+              _old_map: "{{ states(selected_map_select) | default('unknown') }}"
+              _had_temp_map: "{{ auto_discard_temp_map and has_temporary_map }}"
+
+          - if: "{{ _had_temp_map }}"
+            then:
+              - action: dreame_vacuum.vacuum_discard_temporary_map
+                continue_on_error: true
+                target:
+                  entity_id: "{{ vacuum_entity }}"
+              - delay:
+                  seconds: 2
+
+          - if: "{{ _old_map != _req_map }}"
+            then:
+              - action: select.select_option
+                continue_on_error: true
+                target:
+                  entity_id: "{{ selected_map_select }}"
+                data:
+                  option: "{{ _req_map }}"
+              - wait_template: "{{ states(selected_map_select) == _req_map }}"
+                timeout: 30
+                continue_on_timeout: false
+
+          - if: "{{ debug_info }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "🗺️ {{ _req_map }}"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    {% if _had_temp_map %}├─ ✔ **Discard Temp:** yes
+                    {% endif %}└─ ✔ **Map:** {{ _old_map }} → **{{ _req_map }}**
+
+      # ========================================
       # FUNCTION 8: Single Room Cleaning (fn_room)
       # ========================================
       # Cleans exactly ONE room, selected by (map, room) in the trigger event.
@@ -2621,8 +2855,8 @@ actions:
                   message: |
                     {{ now().strftime('%H:%M:%S') }}
 
-                    ├─ ⚠️ **Map:** slot `{{ room_target_map_num }}` unavailable
-                    └─ ○ **Expected:** `map` in the event data, 1-4
+                    ├─ ⚠️ **Map:** section `{{ room_target_map_num }}` unavailable
+                    └─ ○ **Expected:** `map` = Map section 1-4, and that section must name a map
 
                     ❌ Automation aborted
               - stop: "Target map unavailable"

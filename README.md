@@ -1,6 +1,6 @@
 # 🤖 Dreame Vacuum – Multi-Floor Control
 
-[![Version](https://img.shields.io/badge/version-0.11.0-blue.svg)](https://github.com/errormastern/dreame-multifloor-control/releases)
+[![Version](https://img.shields.io/badge/version-0.12.0-blue.svg)](https://github.com/errormastern/dreame-multifloor-control/releases)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.10%2B-green.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 
@@ -22,6 +22,7 @@ A Home Assistant blueprint for controlling Dreame vacuums across multiple floors
 🏠 **Base station map pinned by name** instead of guessed from map data **(v0.11.0+)**<br>
 💧 **Sweep-then-mop** (`mopping_after_sweeping`) selectable as the mop program **(v0.11.0+)**<br>
 🚪 **Single-room cleaning** with the full preparation workflow **(v0.11.0+)**<br>
+🏷️ **Map sections bound by name**, so slot re-sorts cannot move a schedule to the wrong floor **(v0.12.0+)**<br>
 🐛 Debug mode with timing measurements
 
 
@@ -168,6 +169,38 @@ A wrong base map inverts the whole workflow: the robot prepares for transport on
 floor that actually has the dock, and starts cleaning immediately on a floor without
 one. If the configured name matches no map, the blueprint raises a notification listing
 the available names and falls back to auto-detection rather than silently misfiring.
+
+## 🏷️ Map Sections Bound By Name (v0.12.0+)
+
+Each **Map 1…4** section has a **Map Name** field. Fill it with the map's name exactly as
+it appears in `select.{robot}_selected_map`, and that section — its schedules, its map
+trigger, its repeat count — stays on that floor.
+
+**Why this matters:** map slots are an index into the ordered list of saved maps. When
+the robot auto-creates a map, the slots re-sort, and a section bound to slot 4 silently
+starts driving whichever map now sits there. A Tuesday-morning mop schedule for the
+ground floor ends up mopping a bedroom, with nothing in the logs to say so.
+
+Leave the field empty and the section falls back to "whatever occupies slot N" — the
+pre-0.12.0 behaviour — so existing automations are unaffected until you fill it in.
+
+### Switching maps from outside the blueprint
+
+Use the **Switch Map By Name** trigger rather than a per-section map trigger whenever a
+dashboard button, script or voice command picks the map:
+
+```yaml
+trigger: event
+event_type: dreame_map
+event_data:
+  fn: map_named     # matched by the trigger
+id: fn_map_named
+```
+
+The caller sends the map name in the same event as `map`. This exists because a caller
+cannot know which section holds which map — and a caller that resolves the name to a
+slot itself breaks on the next re-sort. An unknown name aborts with a notification
+listing the maps that are actually available.
 
 ## 💧 Sweep-Then-Mop (v0.11.0+)
 

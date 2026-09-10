@@ -42,11 +42,31 @@ Time robot moves away from dock before pausing for manual transport.
 
 ---
 
-## 🏠 Map 1 / Map 2 / Map 3
+## 🏠 Map 1 / Map 2 / Map 3 / Map 4
 
 ![Map Configuration](images/map_configuration.png)
 
-**Note:** Map names are auto-detected from the integration.
+### 🏷️ Map Name
+**Default:** empty (fall back to the map in slot N)
+
+Name of the map this section configures, exactly as shown in
+`select.{robot}_selected_map`.
+
+**Why this exists:** map slots are an index into the ordered list of saved maps. When the
+robot auto-creates a map the slots re-sort, and a section bound to slot 4 silently starts
+driving whichever map now sits there — a ground-floor mop schedule ends up mopping a
+bedroom, with nothing in the log to say so. Naming the map pins the section to the floor
+you meant.
+
+**What follows the name:** everything in the section — both schedules, the map switch
+trigger and the repeat count — plus the base-station comparison.
+
+**Leave it empty** and the section behaves as before 0.12.0, using whichever map occupies
+slot N. Existing automations are unaffected until you fill it in.
+
+> **Note:** If the name matches no saved map, the section falls back to the slot. Rename
+> a map in the Dreame app and you must update it here too — but a mismatch is visible,
+> whereas a slot re-sort is not.
 
 ### 🔄 Cleaning Repeats
 **Default:** 2 (range: 1-3)
@@ -193,6 +213,31 @@ Switches cleaning mode to sweep+mop (full cleaning with mopping).
 - Scheduled mop cleaning
 
 > **Note:** Trigger ID `fn_mop` required for State/Event triggers.
+
+### 🗺️ Switch Map By Name Trigger
+
+Switches to a map identified by its **name** instead of by a Map section.
+
+Prefer this over the per-section map triggers whenever something outside the blueprint
+decides which map to clean — a dashboard button, a script, a voice command:
+
+```yaml
+trigger: event
+event_type: dreame_map
+event_data:
+  fn: map_named     # matched by the trigger
+id: fn_map_named
+```
+
+The caller sends the map name in the **same** event as `map`.
+
+**Why not resolve the name yourself:** a caller cannot know which section holds which
+map, and a caller that maps the name to a slot on its own switches to the wrong floor
+after the next re-sort. Switching only needs the name, so nothing else has to be resolved.
+
+**Validation:** an unknown name aborts with a notification listing the available maps.
+
+> **Note:** Trigger ID `fn_map_named` required for State/Event triggers.
 
 ### 🚪 Single Room Cleaning Trigger
 
