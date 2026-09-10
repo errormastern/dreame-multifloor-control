@@ -827,14 +827,29 @@ blueprint:
           default: "sweeping"
 
         sweeping_mopping_mode_value:
-          name: "🧹💧 Mode Value: Sweep + Mop"
+          name: "💧 Mode Value: Mop Program"
           description: |
-            Exact value for sweep + mop mode (case-sensitive).
+            Which cleaning mode the blueprint SELECTS whenever a mop program is
+            requested — the mop trigger, mop schedules, the prepare notification and
+            single-room mopping all use this one value.
 
-            Check your vacuum's `select.{name}_cleaning_mode` entity in
-            Developer Tools → States for available options.
+            • `sweeping_and_mopping` — sweep and mop in one pass (default)
+            • `mopping_after_sweeping` — sweep everything first, then mop it
+            • `mopping` — mop only
+
+            ⚠️ `mopping_after_sweeping` roughly doubles the runtime, and on a map
+            without the base station the robot spends about a minute hunting for a
+            dock between the two passes before it continues.
+
+            Must be one of the options of `select.{name}_cleaning_mode`
+            (Developer Tools → States).
           selector:
-            text:
+            select:
+              custom_value: true
+              options:
+                - "sweeping_and_mopping"
+                - "mopping_after_sweeping"
+                - "mopping"
           default: "sweeping_and_mopping"
 
         # ============================================
@@ -1335,6 +1350,17 @@ variables:
   # ========================================
   mode_sweeping: !input sweeping_mode_value
   mode_sweeping_mopping: !input sweeping_mopping_mode_value
+
+  # Every cleaning mode that COUNTS as a mop program - a predicate, not a setter.
+  # mode_sweeping_mopping is the mode we SELECT when a mop program is requested;
+  # this is the set we TEST the CURRENT mode against. Keeping them apart means a
+  # robot already sitting in a wet mode (set in the Dreame app, or left over from a
+  # previous run) is still recognised as mopping, so the mop-readiness check and the
+  # mop wash still run for it.
+  mop_modes: >
+    {{ ([mode_sweeping_mopping] +
+        ['sweeping_and_mopping', 'mopping', 'mopping_after_sweeping'])
+       | map('string') | map('trim') | reject('eq', '') | unique | list }}
   global_cleaning_repeats: !input global_cleaning_repeats
   cleaning_states_raw: !input cleaning_states
   cleaning_states: "{{ cleaning_states_raw.split(',') }}"
@@ -1436,7 +1462,7 @@ variables:
 
   cleaning_mode_display: >
     {% if current_mode == mode_sweeping %}{{ sweep_display | default('Sweep') }}
-    {% elif current_mode == mode_sweeping_mopping %}{{ sweep_mop_display | default('Sweep+Mop') }}
+    {% elif current_mode in mop_modes %}{{ sweep_mop_display | default('Sweep+Mop') }}
     {% else %}{{ current_mode }}{% endif %}
 
   current_time: "{{ now().strftime('%H:%M') }}"
@@ -1932,7 +1958,7 @@ actions:
                               _self_clean_changed: true
 
                       # Enable customized cleaning features (base station map)
-                      - if: "{{ has_customized_cleaning and current_mode == mode_sweeping_mopping }}"
+                      - if: "{{ has_customized_cleaning and current_mode in mop_modes }}"
                         then:
                           - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
                             then:
@@ -1999,7 +2025,7 @@ actions:
                   # Initialize tracking variables
                   - variables:
                       _fn_start: "{{ now().timestamp() }}"
-                      _is_mop_mode: "{{ current_mode == mode_sweeping_mopping }}"
+                      _is_mop_mode: "{{ current_mode in mop_modes }}"
                       _old_customized: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
                       _old_sequence: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
                       _old_self_clean: "{{ is_state(self_clean_switch, 'on') if has_value(self_clean_switch) else false }}"
@@ -2666,7 +2692,7 @@ actions:
                   schedule_name: "{{ schedule_label }}"
                   cleaning_mode_display: >
                     {% if target_mode == mode_sweeping %}{{ sweep_display | default('Sweep') }}
-                    {% elif target_mode == mode_sweeping_mopping %}{{ sweep_mop_display | default('Sweep+Mop') }}
+                    {% elif target_mode in mop_modes %}{{ sweep_mop_display | default('Sweep+Mop') }}
                     {% else %}{{ target_mode }}{% endif %}
                   # NOTE: Notification service builder pattern (duplicated in pickup_notify_services)
                   # REASON: Jinja2 in HA blueprints doesn't support macros/functions
@@ -2713,7 +2739,7 @@ actions:
                     error: true
 
               # Check mop readiness for mop mode
-              - if: "{{ target_mode == mode_sweeping_mopping and not mop_ready }}"
+              - if: "{{ target_mode in mop_modes and not mop_ready }}"
                 then:
                   # Send warning notification with sweep-only fallback option
                   - repeat:
