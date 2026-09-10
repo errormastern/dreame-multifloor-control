@@ -334,6 +334,22 @@ blueprint:
       icon: mdi:map
       collapsed: true
       input:
+        base_station_map_name:
+          name: "🏠 Base Station Map"
+          description: |
+            Name of the map the base station physically stands on — exactly as shown in
+            `select.{robot}_selected_map` (e.g. `Wohnzimmer`).
+
+            **Why by name and not by slot:** map slots re-sort when the robot auto-creates
+            a new map. The names survive that; the slot numbers do not.
+
+            Leave empty to auto-detect via `charger_position`.
+            ⚠️ Auto-detection is unreliable: old maps often keep a stale charger position,
+            and the last match wins.
+          selector:
+            text:
+          default: ""
+
         auto_switch_to_base_map:
           name: "🗺️ Auto-Switch-Back to Base Map"
           description: "Automatically switch back to base station map after room cleaning is completed."
@@ -1226,8 +1242,19 @@ variables:
       Map 4
     {% endif %}
 
-  # Auto-detect base station map by finding map with charger_position attribute
-  base_station_map: >
+  # ========================================
+  # BASE STATION MAP RESOLUTION
+  # ========================================
+  # Priority: user-configured name (validated) > charger_position auto-detection
+  #
+  # Auto-detection is unreliable: maps keep a stale charger_position after the base
+  # station moves, and this loop has no break, so the LAST match wins. Map slots also
+  # re-sort when the robot auto-creates a map, and map_id changes with every map
+  # version - the map NAME is the only stable identifier.
+  base_station_map_input: !input base_station_map_name
+
+  # Fallback only - kept unchanged so an unconfigured blueprint behaves as before.
+  base_station_map_auto: >
     {% set ns = namespace(found='') %}
     {% for i in range(1, 5) %}
       {% set map_entity = 'camera.' ~ vacuum_base_name ~ '_map_' ~ i %}
@@ -1239,6 +1266,23 @@ variables:
       {% endif %}
     {% endfor %}
     {{ ns.found if ns.found != '' else 'Map 1' }}
+
+  # Valid = non-empty AND matches one of map_1_name..map_4_name.
+  # map_*_name come from `>` folded scalars, so trim both sides. `| string` first:
+  # HA literal-evaluates a map named "2" into an int, which `| trim` would choke on.
+  base_station_map_configured: >
+    {% set cfg = (base_station_map_input | default('', true)) | string | trim %}
+    {% set names = [map_1_name, map_2_name, map_3_name, map_4_name] | map('string') | map('trim') | list %}
+    {{ cfg != '' and cfg in names }}
+
+  base_station_map: >
+    {% set cfg = (base_station_map_input | default('', true)) | string | trim %}
+    {{ cfg if base_station_map_configured else base_station_map_auto }}
+
+  # Set when the user typed a name that matches no map -> warn, but never abort.
+  base_station_map_misconfigured: >
+    {% set cfg = (base_station_map_input | default('', true)) | string | trim %}
+    {{ cfg != '' and not base_station_map_configured }}
 
   # ========================================
   # PER-MAP CONFIGURATION STRUCTURE
@@ -1329,7 +1373,11 @@ variables:
     {{ config if config is mapping and config.name is defined else map_config.map_1 }}
 
   # Boolean Evaluations with robust defaults
-  is_base_station_map: "{{ current_map_config.has_base_station | default(false) if current_map_config is mapping else (current_map_name == base_station_map) }}"
+  # Compare directly against base_station_map instead of going through
+  # current_map_config: identical for the four known maps, but correct while a
+  # TEMPORARY map is active (the lookup fell back to map_1 and reported map 1's
+  # base-station-ness for any unknown map).
+  is_base_station_map: "{{ current_map_name == base_station_map }}"
   is_cleaning: "{{ current_status in cleaning_states }}"
   is_busy: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') == 'washing' or current_status in cleaning_states }}"
   is_paused: "{{ current_status in paused_states and states(vacuum_entity) != 'docked' }}"
@@ -1552,6 +1600,32 @@ actions:
             **Paused:** {{ is_paused }}
             **Segments:** {{ map_segments | length }}{% if is_schedule_trigger %}
             **Schedule:** {{ schedule_trigger_map_name }}{% endif %}
+
+  # ========================================
+  # CONFIG WARNING: Base station map name not found
+  # ========================================
+  # Standalone `if` on purpose - NOT a branch of the choose below. That choose takes
+  # only the FIRST matching branch and every branch ends in `stop:`, so a config
+  # warning placed there would be swallowed whenever the robot also has an error.
+  # Warn and continue with auto-detection; never abort.
+  - if: "{{ base_station_map_misconfigured }}"
+    then:
+      - action: persistent_notification.create
+        data:
+          notification_id: "dreame_base_map_config_{{ vacuum_base_name }}"
+          title: "⚠️ Base Station Map Not Found"
+          message: |
+            {{ now().strftime('%H:%M:%S') }}
+
+            ├─ ⚠️ **Configured:** `{{ base_station_map_input }}`
+            ├─ ○ **Available:** {{ map_1_name }}, {{ map_2_name }}, {{ map_3_name }}, {{ map_4_name }}
+            └─ ✔ **Fallback:** {{ base_station_map_auto }}
+    else:
+      # Clear the warning once the name is corrected
+      - action: persistent_notification.dismiss
+        continue_on_error: true
+        data:
+          notification_id: "dreame_base_map_config_{{ vacuum_base_name }}"
 
   # ========================================
   # ERROR AND WARNING DETECTION
