@@ -421,6 +421,36 @@ blueprint:
             trigger:
           default: []
 
+        room_trigger:
+          name: "🚪 Single Room Cleaning Trigger (Optional)"
+          description: |
+            Trigger for cleaning exactly ONE room. The map switch, the mode and the
+            whole preparation procedure are handled by the blueprint.
+
+            The trigger only matches `fn`; the target rides along in the same event
+            and is read by the automation:
+
+            ```yaml
+            trigger: event
+            event_type: dreame_room
+            event_data:
+              fn: room        # matched
+            id: fn_room
+            ```
+
+            Your script sends, in the SAME event:
+            • `map`  — map slot 1-4
+            • `room` — room id on THAT map (from the map camera's `rooms` attribute)
+            • `mode` — `sweep` or `mop`
+
+            Room ids are only unique within a map, so always send `map` and `room`
+            together.
+
+            ⚠️ **State/Event triggers:** Set Trigger ID to `fn_room`
+          selector:
+            trigger:
+          default: []
+
     # ========================================
     # CLEANING SETTINGS
     # ========================================
@@ -996,6 +1026,12 @@ triggers:
   # FUNCTION 2: Sweep + Mop Mode
   # ========================================
   - triggers: !input mop_trigger
+
+  # ========================================
+  # FUNCTION 8: Single Room Cleaning
+  # ========================================
+  # Carries map/room/mode in the event data - see the room_trigger input.
+  - triggers: !input room_trigger
 
   # ========================================
   # FUNCTION 3: Smart Start/Pause/Resume
@@ -1574,6 +1610,7 @@ variables:
       'fn_map2': 'Map 2',
       'fn_map3': 'Map 3',
       'fn_map4': 'Map 4',
+      'fn_room': 'Single Room',
       'setup_required': 'Setup Required',
       'auto_switch_to_base': 'Auto-Switch'
     } %}
@@ -1612,6 +1649,73 @@ variables:
   map_segments: "{{ room_ids if room_ids | length > 0 else segment_ids }}"
   has_segments: "{{ map_segments | length > 0 }}"
   segments_source: "{{ 'rooms' if room_ids | length > 0 else ('segments' if segment_ids | length > 0 else 'none') }}"
+
+  # ========================================
+  # SINGLE ROOM CLEANING (fn_room)
+  # ========================================
+  # Defined last so every dependency above is already in scope.
+  #
+  # `variables:` is rendered for EVERY trigger, so trigger.event must never be touched
+  # unless this really is an event trigger - otherwise every other trigger path breaks.
+  # Jinja's inline-if is lazy, so `X if room_evt_ok else Y` is a real guard.
+  #
+  # Always read event data with .get(). Under Jinja's getattr-first rule
+  # trigger.event.data.keys / .items / .values / .get / .pop resolve to dict METHODS,
+  # not to payload keys.
+  room_evt_ok: >
+    {{ (trigger.platform | default('')) == 'event'
+       and trigger.event is defined
+       and trigger.event.data is defined
+       and trigger.event.data is mapping }}
+
+  room_target_map_num:  "{{ (trigger.event.data.get('map',  0)        if room_evt_ok else 0)       | int(0) }}"
+  room_target_room_id:  "{{ (trigger.event.data.get('room', 0)        if room_evt_ok else 0)       | int(0) }}"
+  room_target_mode_key: "{{ ((trigger.event.data.get('mode', 'sweep') if room_evt_ok else 'sweep') | string | lower | trim) }}"
+
+  room_target_is_mop: "{{ room_target_mode_key in ['mop', 'mopping', 'wischen', 'sweep_mop'] }}"
+  room_target_mode:   "{{ mode_sweeping_mopping if room_target_is_mop else mode_sweeping }}"
+
+  room_target_map_name: >
+    {% set names = [map_1_name, map_2_name, map_3_name, map_4_name] %}
+    {{ (names[room_target_map_num - 1] | string | trim) if 1 <= room_target_map_num <= 4 else '' }}
+
+  room_target_repeats: >
+    {% if 1 <= room_target_map_num <= 4 %}
+      {{ map_config['map_' ~ room_target_map_num].cleaning_repeats | default(global_cleaning_repeats) | default(2) }}
+    {% else %}{{ global_cleaning_repeats | default(2) }}{% endif %}
+
+  # Rooms come from the TARGET map's own SLOT camera, never the live camera.
+  # The slot camera is unaffected by map switching, so - unlike the map_segments
+  # above, which is computed at trigger time from the pre-switch live map - this is
+  # not stale when the target map is not the one currently loaded.
+  room_target_rooms: >
+    {% if 1 <= room_target_map_num <= 4 %}
+      {% set cam = 'camera.' ~ vacuum_base_name ~ '_map_' ~ room_target_map_num %}
+      {% set rooms = state_attr(cam, 'rooms') if has_value(cam) else none %}
+      {{ rooms if rooms is mapping else {} }}
+    {% else %}{{ {} }}{% endif %}
+
+  # Visible rooms only: slot cameras also list rooms with visibility 'Hidden' that the
+  # live map omits and the robot will not clean.
+  room_target_room_ids: >
+    {% set ns = namespace(ids=[]) %}
+    {% for rid, r in room_target_rooms.items() %}
+      {% if r.get('visibility', 'Visible') != 'Hidden' %}
+        {% set ns.ids = ns.ids + [ r.get('room_id', rid) | int(-1) ] %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.ids }}
+
+  room_target_room_valid: "{{ room_target_room_id in room_target_room_ids }}"
+
+  room_target_room_name: >
+    {% set ns = namespace(n='') %}
+    {% for rid, r in room_target_rooms.items() %}
+      {% if (r.get('room_id', rid) | int(-1)) == room_target_room_id %}
+        {% set ns.n = r.get('custom_name') | default(r.get('name'), true) | default('', true) %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.n if ns.n else ('Room ' ~ room_target_room_id) }}
 
 # ========================================
 # ACTIONS
@@ -2445,6 +2549,399 @@ actions:
 
                     {% if _had_temp_map %}├─ ✔ **Discard Temp:** yes
                     └─ ✔ **Map:** {{ _old_map }} → **{{ map_4_name }}**{% else %}└─ ✔ **Map:** {{ _old_map }} → **{{ map_4_name }}**{% endif %}
+
+      # ========================================
+      # FUNCTION 8: Single Room Cleaning (fn_room)
+      # ========================================
+      # Cleans exactly ONE room, selected by (map, room) in the trigger event.
+      #
+      # Everything is committed to the robot inside THIS run: map switched, mode set,
+      # vacuum_clean_segment issued. On a map without the base station the robot is
+      # then paused MID-JOB, so notification_start only has to call vacuum.start to
+      # resume that in-flight job. No helper entity, no state across runs, and no
+      # change to notification_start / notification_cancel.
+      - conditions:
+          - condition: template
+            value_template: "{{ triggered_function == 'fn_room' }}"
+        sequence:
+          # ---------- GUARDS ----------
+          - if: "{{ is_busy }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  notification_id: "dreame_room_busy_{{ vacuum_base_name }}"
+                  title: "⏳ Busy"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    **Function:** Single Room
+                    **Status:** {{ current_base_status if current_base_status == 'washing' else current_status }}
+
+                    ❌ Automation aborted
+              - stop: "Robot busy"
+
+          - if: "{{ not is_docked }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  notification_id: "dreame_room_error_{{ vacuum_base_name }}"
+                  title: "⚠️ Room Cleaning Failed"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    ├─ ⚠️ **Dock:** not docked ({{ states(vacuum_entity) }})
+                    └─ ○ **Start:** skipped
+
+                    ❌ Automation aborted
+              - stop: "Robot not docked"
+                error: true
+
+          - if: "{{ room_target_map_name in ['', 'unavailable', 'unknown'] }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  notification_id: "dreame_room_error_{{ vacuum_base_name }}"
+                  title: "⚠️ Room Cleaning Failed"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    ├─ ⚠️ **Map:** slot `{{ room_target_map_num }}` unavailable
+                    └─ ○ **Expected:** `map` in the event data, 1-4
+
+                    ❌ Automation aborted
+              - stop: "Target map unavailable"
+                error: true
+
+          - if: "{{ not room_target_room_valid }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  notification_id: "dreame_room_error_{{ vacuum_base_name }}"
+                  title: "⚠️ Room Cleaning Failed"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    ├─ ✔ **Map:** {{ room_target_map_name }}
+                    ├─ ⚠️ **Room:** `{{ room_target_room_id }}` not on this map
+                    └─ ○ **Available:** {{ room_target_room_ids | join(', ') }}
+
+                    ❌ Automation aborted
+              - stop: "Unknown room id for target map"
+                error: true
+
+          - if: "{{ room_target_is_mop and not mop_ready }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  notification_id: "mop_not_ready_{{ vacuum_base_name }}"
+                  title: "{{ mop_not_ready_title }}"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    ├─ ⚠️ **Mop Pad:** {{ mop_pad_status }}
+                    └─ ⚠️ **Water:** {{ water_warning_status }}
+
+                    ❌ Automation aborted
+              - stop: "Mop not ready"
+                error: true
+
+          # ---------- SNAPSHOT ----------
+          - variables:
+              _fn_start: "{{ now().timestamp() }}"
+              _target_has_base: "{{ room_target_map_name == base_station_map }}"
+              _old_map: "{{ states(selected_map_select) | default('unknown') }}"
+              _old_customized: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+
+          # ---------- DISCARD TEMPORARY MAP ----------
+          - if: "{{ auto_discard_temp_map and has_temporary_map }}"
+            then:
+              - action: dreame_vacuum.vacuum_discard_temporary_map
+                continue_on_error: true
+                target:
+                  entity_id: "{{ vacuum_entity }}"
+              - delay:
+                  seconds: 2
+
+          # ---------- SWITCH MAP ----------
+          # Selecting a map ends any active job, which is why the dock guard runs first.
+          - if: "{{ _old_map != room_target_map_name }}"
+            then:
+              - action: select.select_option
+                continue_on_error: true
+                target:
+                  entity_id: "{{ selected_map_select }}"
+                data:
+                  option: "{{ room_target_map_name }}"
+              - wait_template: "{{ states(selected_map_select) == room_target_map_name }}"
+                timeout: 30
+                continue_on_timeout: false
+              # Let the map finish loading before reading its rooms
+              - delay:
+                  seconds: 5
+
+          # ---------- RE-VALIDATE AGAINST THE LIVE MAP ----------
+          # room_target_room_ids came from the slot camera, which can lag behind the
+          # robot. Confirm the room really exists on the map that is now loaded.
+          - variables:
+              _live_room_ids: >
+                {% set rooms = state_attr(map_camera, 'rooms') %}
+                {{ rooms.values() | map(attribute='room_id', default=-1) | list if rooms is mapping else [] }}
+          - if: "{{ _live_room_ids | length > 0 and room_target_room_id not in _live_room_ids }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  notification_id: "dreame_room_error_{{ vacuum_base_name }}"
+                  title: "⚠️ Room Cleaning Failed"
+                  message: |
+                    {{ now().strftime('%H:%M:%S') }}
+
+                    ├─ ✔ **Map:** {{ room_target_map_name }}
+                    ├─ ⚠️ **Room:** `{{ room_target_room_id }}` missing after map switch
+                    └─ ○ **On loaded map:** {{ _live_room_ids | join(', ') }}
+
+                    ❌ Automation aborted
+              - stop: "Room not present on target map after switch"
+                error: true
+
+          # ---------- CLEANING MODE ----------
+          # customized_cleaning off so the global mode and our repeats actually apply
+          - if: "{{ _old_customized }}"
+            then:
+              - action: switch.turn_off
+                continue_on_error: true
+                target:
+                  entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
+              - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
+                timeout: 10
+                continue_on_timeout: true
+
+          # The cleaning_mode select is unavailable while cleaning; we are docked, but
+          # it can still be briefly unavailable right after a map switch.
+          - wait_template: "{{ has_value(cleaning_mode_select) }}"
+            timeout: 5
+            continue_on_timeout: true
+          - action: select.select_option
+            enabled: "{{ room_target_mode | default('') != '' }}"
+            continue_on_error: true
+            target:
+              entity_id: "{{ cleaning_mode_select }}"
+            data:
+              option: "{{ room_target_mode }}"
+          - wait_template: "{{ states(cleaning_mode_select) == room_target_mode }}"
+            timeout: 10
+            continue_on_timeout: true
+
+          - choose:
+              # ============================================================
+              # TARGET MAP HAS THE BASE STATION → clean right away
+              # ============================================================
+              - conditions:
+                  - condition: template
+                    value_template: "{{ _target_has_base }}"
+                sequence:
+                  # self_clean on: the robot may use the dock freely on this floor
+                  - if: "{{ has_value(self_clean_switch) and is_state(self_clean_switch, 'off') }}"
+                    then:
+                      - action: switch.turn_on
+                        continue_on_error: true
+                        target:
+                          entity_id: "{{ self_clean_switch }}"
+
+                  - action: dreame_vacuum.vacuum_clean_segment
+                    continue_on_error: true
+                    target:
+                      entity_id: "{{ vacuum_entity }}"
+                    data:
+                      segments: "{{ [room_target_room_id] }}"
+                      repeats: "{{ room_target_repeats }}"
+
+                  - if: "{{ debug_info }}"
+                    then:
+                      - action: persistent_notification.create
+                        data:
+                          title: "🚪 Room Cleaning Started"
+                          message: |
+                            {{ now().strftime('%H:%M:%S') }}
+
+                            ├─ ✔ **Map:** {% if _old_map != room_target_map_name %}{{ _old_map }} → **{{ room_target_map_name }}**{% else %}{{ room_target_map_name }}{% endif %}
+
+                            ├─ ✔ **Room:** {{ room_target_room_name }} (#{{ room_target_room_id }})
+                            ├─ ✔ **Cleaning-Mode:** {{ states(cleaning_mode_select) }}
+                            ├─ ✔ **Repeats:** {{ room_target_repeats }}
+                            └─ ✔ **Start:** base station map, no transport needed
+
+                            **Active Segments:** {{ state_attr(vacuum_entity, 'active_segments') }}
+                            **Duration:** {{ ((now().timestamp() - _fn_start) | round(1)) }}s
+
+            # ============================================================
+            # TARGET MAP WITHOUT BASE STATION → prepare, pause, carry
+            # Mirrors the fn_start non-base-map preparation procedure.
+            # ============================================================
+            default:
+              # Captured at THIS scope on purpose: `- variables:` inside a `then:` block
+              # only shadows within that block, so anything assigned in there would be
+              # invisible to the summary further down.
+              - variables:
+                  _stopped_drying: "{{ room_target_is_mop and states(self_wash_base_status_sensor) == 'drying' }}"
+                  _wash_start: "{{ now().timestamp() }}"
+
+              - if: "{{ room_target_is_mop }}"
+                then:
+                  # Stop an active drying cycle first
+                  - if: "{{ _stopped_drying }}"
+                    then:
+                      - action: button.press
+                        continue_on_error: true
+                        target:
+                          entity_id: "{{ stop_drying_button }}"
+                      - wait_template: "{{ states(self_wash_base_status_sensor) != 'drying' }}"
+                        timeout: 10
+                        continue_on_timeout: true
+
+                  # Wash and moisten the mop before leaving the dock
+                  - action: button.press
+                    continue_on_error: true
+                    target:
+                      entity_id: "{{ self_clean_button }}"
+                  - wait_template: "{{ states(self_wash_base_status_sensor) in ['washing', 'clean_add_water'] }}"
+                    timeout:
+                      seconds: "{{ mop_start_timeout }}"
+                    continue_on_timeout: true
+                  - wait_template: "{{ states(self_wash_base_status_sensor) not in ['washing', 'clean_add_water'] }}"
+                    timeout:
+                      seconds: "{{ moistening_timeout }}"
+                    continue_on_timeout: true
+
+              - variables:
+                  _wash_duration: "{{ (now().timestamp() - _wash_start) | round(0) | int if room_target_is_mop else 0 }}"
+
+              # delay=0 keeps the robot docked - map, mode and mop are already staged
+              - if: "{{ pause_delay_after_undock == 0 }}"
+                then:
+                  - if: "{{ debug_info }}"
+                    then:
+                      - action: persistent_notification.create
+                        data:
+                          title: "⏭️ Room Cleaning Staged (delay=0)"
+                          message: |
+                            {{ now().strftime('%H:%M:%S') }}
+
+                            └─ ✔ **Status:** docked — {{ room_target_map_name }} / {{ room_target_room_name }}
+                  - stop: "Delay is 0, robot stays docked"
+
+              # self_clean off BEFORE starting: on a floor without a dock the robot
+              # would otherwise drive off looking for one it cannot reach.
+              - if: "{{ has_value(self_clean_switch) and is_state(self_clean_switch, 'on') }}"
+                then:
+                  - action: switch.turn_off
+                    continue_on_error: true
+                    target:
+                      entity_id: "{{ self_clean_switch }}"
+
+              - action: dreame_vacuum.vacuum_clean_segment
+                continue_on_error: true
+                target:
+                  entity_id: "{{ vacuum_entity }}"
+                data:
+                  segments: "{{ [room_target_room_id] }}"
+                  repeats: "{{ room_target_repeats }}"
+
+              # See fn_start: never narrow per mode, never abort on timeout - the
+              # pause below is the safety action.
+              - wait_template: >
+                  {{ states('sensor.' ~ vacuum_base_name ~ '_state') in start_detect_states }}
+                timeout:
+                  seconds: "{{ mop_start_timeout if room_target_is_mop else 30 }}"
+                continue_on_timeout: true
+              - variables:
+                  _start_detected: "{{ wait.completed }}"
+
+              # Let the robot clear the dock, then pause for manual transport
+              - delay:
+                  seconds: "{{ pause_delay_after_undock }}"
+              - action: vacuum.pause
+                continue_on_error: true
+                target:
+                  entity_id: "{{ vacuum_entity }}"
+
+              # Pickup notification - reuses the existing START_CLEANING /
+              # CANCEL_CLEANING action ids, so notification_start and
+              # notification_cancel handle the resume unchanged.
+              - if: "{{ notification_enabled }}"
+                then:
+                  - variables:
+                      map_name: "{{ room_target_map_name }}"
+                      room_name: "{{ room_target_room_name }}"
+                      current_map: "{{ states(selected_map_select) }}"
+                      cleaning_mode_display: "{{ sweep_mop_display if room_target_is_mop else sweep_display }}"
+                      # NOTE: Notification service builder pattern (duplicated in
+                      # scheduled_notify_services and pickup_notify_services)
+                      # REASON: Jinja2 in HA blueprints doesn't support macros/functions
+                      # If modifying this logic, update the other two as well
+                      room_notify_services: >
+                        {% set result = [] %}
+                        {% for person in notification_persons %}
+                          {% if is_state(person, 'home') %}
+                            {% set trackers = state_attr(person, 'device_trackers') %}
+                            {% if trackers %}
+                              {% set first_tracker = trackers if trackers is string_like else (trackers | first) %}
+                              {% set tracker_name = first_tracker | replace('device_tracker.', '') %}
+                              {% if tracker_name | length > 0 %}
+                                {% set result = result + ['notify.mobile_app_' + tracker_name] %}
+                              {% endif %}
+                            {% endif %}
+                          {% endif %}
+                        {% endfor %}
+                        {% for group in notification_groups %}
+                          {% if group and group not in ['', 'unknown', 'unavailable', none] %}
+                            {% set result = result + ['notify.' + group] %}
+                          {% endif %}
+                        {% endfor %}
+                        {{ result }}
+                  - repeat:
+                      for_each: "{{ room_notify_services }}"
+                      sequence:
+                        - action: "{{ repeat.item }}"
+                          continue_on_error: true
+                          data:
+                            title: !input pickup_notification_title
+                            message: !input pickup_notification_message
+                            data:
+                              actions:
+                                - action: "START_CLEANING"
+                                  title: "{{ start_cleaning_button }}"
+                                - action: "CANCEL_CLEANING"
+                                  title: "{{ cancel_cleaning_button }}"
+                              push:
+                                interruption-level: "{{ notification_interruption_level }}"
+                                sound: >
+                                  {% if notification_critical %}
+                                    {{ {'name': notification_sound, 'critical': 1, 'volume': notification_volume} }}
+                                  {% else %}
+                                    {{ notification_sound }}
+                                  {% endif %}
+
+              - if: "{{ debug_info }}"
+                then:
+                  - action: persistent_notification.create
+                    data:
+                      title: "🚪 Room Cleaning Prepared"
+                      message: |
+                        {{ now().strftime('%H:%M:%S') }}
+
+                        ├─ ✔ **Map:** {% if _old_map != room_target_map_name %}{{ _old_map }} → **{{ room_target_map_name }}**{% else %}{{ room_target_map_name }}{% endif %}
+
+                        ├─ ✔ **Room:** {{ room_target_room_name }} (#{{ room_target_room_id }})
+                        ├─ ✔ **Cleaning-Mode:** {{ states(cleaning_mode_select) }}
+                        {% if _stopped_drying %}├─ ✔ **Stop Drying:** idle
+                        {% endif %}{% if room_target_is_mop %}├─ ✔ **Wash & Refill:** {{ _wash_duration }}s
+                        {% endif %}├─ {% if _start_detected %}✔{% else %}⚠️{% endif %} **Start:** {{ states('sensor.' ~ vacuum_base_name ~ '_state') }}{% if not _start_detected %} (not detected){% endif %}
+
+                        ├─ ✔ **Pause:** for transport
+                        └─ ✔ **Notify:** {{ 'sent' if notification_enabled else 'disabled' }}
+
+                        **Active Segments:** {{ state_attr(vacuum_entity, 'active_segments') }}
+                        **Duration:** {{ ((now().timestamp() - _fn_start) | round(1)) }}s
 
       # ========================================
       # SCHEDULE-TRIGGERED CLEANING FUNCTIONS
