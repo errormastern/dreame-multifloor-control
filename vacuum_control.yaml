@@ -116,12 +116,14 @@ blueprint:
             Schedule helper for automatic sweep-only cleaning.
 
             Create schedule helper first (Settings → Devices & Services → Helpers),
-            then select here. Leave as "none" to disable.
+            then select here. Leave empty to disable.
+            Multiple schedules may be selected.
           default: []
           selector:
             entity:
               filter:
                 - domain: schedule
+              multiple: true
 
         map_1_mop_schedule:
           name: "📅 Sweep+Mop Schedule (Optional)"
@@ -129,12 +131,14 @@ blueprint:
             Schedule helper for automatic sweep+mop cleaning.
 
             Create schedule helper first (Settings → Devices & Services → Helpers),
-            then select here. Leave as "none" to disable.
+            then select here. Leave empty to disable.
+            Multiple schedules may be selected.
           default: []
           selector:
             entity:
               filter:
                 - domain: schedule
+              multiple: true
 
     # ========================================
     # MAP 2 CONFIGURATION
@@ -179,12 +183,14 @@ blueprint:
             Schedule helper for automatic sweep-only cleaning.
 
             Create schedule helper first (Settings → Devices & Services → Helpers),
-            then select here. Leave as "none" to disable.
+            then select here. Leave empty to disable.
+            Multiple schedules may be selected.
           default: []
           selector:
             entity:
               filter:
                 - domain: schedule
+              multiple: true
 
         map_2_mop_schedule:
           name: "📅 Sweep+Mop Schedule (Optional)"
@@ -192,12 +198,14 @@ blueprint:
             Schedule helper for automatic sweep+mop cleaning.
 
             Create schedule helper first (Settings → Devices & Services → Helpers),
-            then select here. Leave as "none" to disable.
+            then select here. Leave empty to disable.
+            Multiple schedules may be selected.
           default: []
           selector:
             entity:
               filter:
                 - domain: schedule
+              multiple: true
 
     # ========================================
     # MAP 3 CONFIGURATION
@@ -242,12 +250,14 @@ blueprint:
             Schedule helper for automatic sweep-only cleaning.
 
             Create schedule helper first (Settings → Devices & Services → Helpers),
-            then select here. Leave as "none" to disable.
+            then select here. Leave empty to disable.
+            Multiple schedules may be selected.
           default: []
           selector:
             entity:
               filter:
                 - domain: schedule
+              multiple: true
 
         map_3_mop_schedule:
           name: "📅 Sweep+Mop Schedule (Optional)"
@@ -255,12 +265,14 @@ blueprint:
             Schedule helper for automatic sweep+mop cleaning.
 
             Create schedule helper first (Settings → Devices & Services → Helpers),
-            then select here. Leave as "none" to disable.
+            then select here. Leave empty to disable.
+            Multiple schedules may be selected.
           default: []
           selector:
             entity:
               filter:
                 - domain: schedule
+              multiple: true
 
     # ========================================
     # MAP 4 CONFIGURATION
@@ -305,12 +317,14 @@ blueprint:
             Schedule helper for automatic sweep-only cleaning.
 
             Create schedule helper first (Settings → Devices & Services → Helpers),
-            then select here. Leave as "none" to disable.
+            then select here. Leave empty to disable.
+            Multiple schedules may be selected.
           default: []
           selector:
             entity:
               filter:
                 - domain: schedule
+              multiple: true
 
         map_4_mop_schedule:
           name: "📅 Sweep+Mop Schedule (Optional)"
@@ -318,12 +332,14 @@ blueprint:
             Schedule helper for automatic sweep+mop cleaning.
 
             Create schedule helper first (Settings → Devices & Services → Helpers),
-            then select here. Leave as "none" to disable.
+            then select here. Leave empty to disable.
+            Multiple schedules may be selected.
           default: []
           selector:
             entity:
               filter:
                 - domain: schedule
+              multiple: true
 
     # ========================================
     # MAP FUNCTIONS
@@ -364,7 +380,7 @@ blueprint:
             entity:
               filter:
                 - domain: sensor
-              multiple: false
+              multiple: true
           default: []
 
         auto_discard_temporary_map:
