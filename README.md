@@ -1,6 +1,6 @@
 # 🤖 Dreame Vacuum – Multi-Floor Control
 
-[![Version](https://img.shields.io/badge/version-0.9.18-blue.svg)](https://github.com/errormastern/dreame-multifloor-control/releases)
+[![Version](https://img.shields.io/badge/version-0.11.0-blue.svg)](https://github.com/errormastern/dreame-multifloor-control/releases)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.10%2B-green.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 
@@ -11,7 +11,7 @@ A Home Assistant blueprint for controlling Dreame vacuums across multiple floors
 
 🤖 Auto-detection of vacuum entities (select vacuum, rest detected automatically)<br>
 ⚙️ Automatically verify and configure optimal robot settings prior to each cleaning cycle<br>
-📅 Per-map schedules with sweep/mop modes (3 maps, 6 schedules)<br>
+📅 Per-map schedules with sweep/mop modes (4 maps, 8 schedules)<br>
 🔔 Notification workflow with action buttons for transport<br>
 👥 Multi-recipient notifications with presence checking<br>
 🏠 Segment-based cleaning with configurable repeats<br>
@@ -19,6 +19,9 @@ A Home Assistant blueprint for controlling Dreame vacuums across multiple floors
 ⚠️ Safety checks: schedule conflicts, robot and cleaning options, dock status, mop readiness<br>
 🗺️ Auto-discard temporary maps for seamless multi-floor operation<br>
 🏠 **Auto-Switch-Back to Base Map** after multi-floor cleaning **(v0.9.14+)**<br>
+🏠 **Base station map pinned by name** instead of guessed from map data **(v0.11.0+)**<br>
+💧 **Sweep-then-mop** (`mopping_after_sweeping`) selectable as the mop program **(v0.11.0+)**<br>
+🚪 **Single-room cleaning** with the full preparation workflow **(v0.11.0+)**<br>
 🐛 Debug mode with timing measurements
 
 
@@ -147,6 +150,68 @@ Automatically switches back to the base station map after completing a multi-flo
 - Won't interfere with active schedule workflows
 
 **Example:** Robot cleans "upper floor" → manually returned to dock → auto-switches back to "livingroom" (base station map)
+
+## 🏠 Base Station Map (v0.11.0+)
+
+Set **Map Functions → Base Station Map** to the name of the map your base station
+physically stands on, exactly as it appears in `select.{robot}_selected_map`.
+
+Leave it empty and the blueprint falls back to detecting the map that exposes a
+`charger_position` — which is unreliable in practice:
+
+- Maps keep a stale `charger_position` after the base station moves, so several maps
+  can claim one. Detection takes the last match.
+- Map slots re-sort whenever the robot auto-creates a map, and `map_id` changes with
+  every map version. **The map name is the only stable identifier.**
+
+A wrong base map inverts the whole workflow: the robot prepares for transport on the
+floor that actually has the dock, and starts cleaning immediately on a floor without
+one. If the configured name matches no map, the blueprint raises a notification listing
+the available names and falls back to auto-detection rather than silently misfiring.
+
+## 💧 Sweep-Then-Mop (v0.11.0+)
+
+**Advanced Settings → Mode Value: Mop Program** picks which mode every mop path selects
+— the mop trigger, the mop schedules, the prepare notification and single-room mopping:
+
+| Value | Behaviour |
+|---|---|
+| `sweeping_and_mopping` | Sweep and mop in one pass (default) |
+| `mopping_after_sweeping` | Sweep everything first, then mop it |
+| `mopping` | Mop only |
+
+> [!WARNING]
+> `mopping_after_sweeping` roughly doubles the runtime, and on a map without the base
+> station the robot spends about a minute hunting for a dock between the two passes
+> before it continues.
+
+Whichever value you pick, the current mode is still recognised as mopping if it is any
+known wet mode — so a robot set from the Dreame app still gets its mop-readiness check
+and mop wash.
+
+## 🚪 Single Room Cleaning (v0.11.0+)
+
+**Control Functions → Single Room Cleaning Trigger** cleans exactly one room, running
+the same preparation workflow as a whole-map clean. The trigger matches only `fn`; the
+target rides along in the same event:
+
+```yaml
+trigger: event
+event_type: dreame_room
+event_data:
+  fn: room          # matched by the trigger
+id: fn_room
+```
+
+Your script sends `map` (slot 1-4), `room` (the room id **on that map**) and `mode`
+(`sweep` or `mop`) in the same event. Room ids are only unique within a map, so always
+send `map` and `room` together. Valid ids come from the map camera's `rooms` attribute;
+rooms marked `Hidden` are rejected, and an unknown id aborts with a notification listing
+the ids that would have worked.
+
+On the base station map the robot starts immediately. On any other map it prepares,
+undocks, pauses and sends the pickup notification — pressing **Start Cleaning** resumes
+the single-room job with no extra configuration.
 
 ## 🌐 Localisation
 
