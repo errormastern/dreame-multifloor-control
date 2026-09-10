@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
     **🤖 Dreame Vacuum – Multi-Floor Control**
-    *Version: 0.12.0*
+    *Version: 0.13.0*
 
     A Home Assistant blueprint for controlling Dreame vacuums across multiple floors.
     Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers. **Never care about the right robot settings for seamless multi-floor cleaning again.**
@@ -433,16 +433,6 @@ blueprint:
             boolean:
           default: true
 
-        task_status_sensor_trigger:
-          name: "🔍 Task Status Sensor"
-          description: "Select task status sensor (e.g., `sensor.{vacuum_name}_task_status`). Leave empty to disable auto-switch."
-          selector:
-            entity:
-              filter:
-                - domain: sensor
-              multiple: true
-          default: []
-
         auto_discard_temporary_map:
           name: "🗺️ Auto-Discard Temporary Maps"
           description: |
@@ -683,34 +673,13 @@ blueprint:
           description: |
             Message for scheduled cleaning notifications.
 
-            **Variables:** `robot_name`, `map_name`, `cleaning_mode_display`, `current_time`, `repeat_number`
+            **Variables:** `robot_name`, `map_name`, `cleaning_mode_display`, `current_time`
           selector:
             text:
               multiline: true
           default: "{{ robot_name }} is ready for scheduled cleaning on {{ map_name }} ({{ cleaning_mode_display }}). Please prepare the robot."
 
-        scheduled_notification_repeat_count:
-          name: "📅 Schedule Repeat Count"
-          description: "How many times to resend if no response (1-3)."
-          selector:
-            number:
-              min: 1
-              max: 3
-              step: 1
-              mode: slider
-          default: 2
 
-        scheduled_notification_repeat_interval:
-          name: "📅 Schedule Repeat Interval"
-          description: "Minutes between reminder notifications (0 = no repeats)."
-          selector:
-            number:
-              min: 0
-              max: 240
-              step: 5
-              unit_of_measurement: "min"
-              mode: slider
-          default: 15
 
         # --- PICKUP NOTIFICATIONS ---
         pickup_notification_title:
@@ -728,34 +697,13 @@ blueprint:
           description: |
             Message for pickup notifications.
 
-            **Variables:** `robot_name`, `map_name`, `cleaning_mode_display`, `current_time`, `repeat_number`
+            **Variables:** `robot_name`, `map_name`, `cleaning_mode_display`, `current_time`
           selector:
             text:
               multiline: true
           default: "{{ robot_name }} is paused and ready for transport to {{ map_name }}. Please pick up the robot."
 
-        pickup_notification_repeat_count:
-          name: "🤖 Pickup Repeat Count"
-          description: "How many times to resend if robot not started (1-3)."
-          selector:
-            number:
-              min: 1
-              max: 3
-              step: 1
-              mode: slider
-          default: 2
 
-        pickup_notification_repeat_interval:
-          name: "🤖 Pickup Repeat Interval"
-          description: "Minutes between reminder notifications (0 = no repeats)."
-          selector:
-            number:
-              min: 0
-              max: 240
-              step: 5
-              unit_of_measurement: "min"
-              mode: slider
-          default: 10
 
         # --- iOS SETTINGS (SHARED) ---
         notification_interruption_level:
@@ -1346,8 +1294,6 @@ variables:
   charging_status_sensor: "sensor.{{ vacuum_base_name }}_charging_status"
   stop_drying_button: "button.{{ vacuum_base_name }}_manual_drying"
 
-  # Task status sensor for auto-switch detection (auto-detected for Actions)
-  task_status_sensor: "sensor.{{ vacuum_base_name }}_task_status"
   self_wash_base_status_sensor: "sensor.{{ vacuum_base_name }}_self_wash_base_status"
 
   # ========================================
@@ -1621,9 +1567,13 @@ variables:
   # ========================================
   auto_switch_to_base_enabled: !input auto_switch_to_base_map
 
-  # Preparation tracking (for schedule workflow collision detection)
+  # Preparation tracking (for schedule workflow collision detection).
+  # The prepare triggers are named per map and mode - notification_prepare_map1_sweep
+  # and so on - so an exact match against 'notification_prepare' never held and this
+  # guard was always false, letting auto-switch-back run during a preparation.
   preparation_active: >
-    {{ trigger.id in ['notification_prepare', 'notification_start'] if trigger.id is defined else false }}
+    {% set tid = trigger.id | default('', true) | string %}
+    {{ tid.startswith('notification_prepare') or tid == 'notification_start' }}
 
   # Time since last preparation pause (20s safety buffer)
   last_pause_time: "{{ as_timestamp(states[vacuum_entity].last_changed) if states[vacuum_entity].state == 'paused' else 0 }}"
@@ -1637,6 +1587,7 @@ variables:
 
   cleaning_mode_display: >
     {% if current_mode == mode_sweeping %}{{ sweep_display | default('Sweep') }}
+    {% elif current_mode == 'mopping' %}{{ mop_display | default('Mop') }}
     {% elif current_mode in mop_modes %}{{ sweep_mop_display | default('Sweep+Mop') }}
     {% else %}{{ current_mode }}{% endif %}
 
@@ -2200,51 +2151,49 @@ actions:
                       - condition: template
                         value_template: "{{ is_base_station_map }}"
                     sequence:
-                      # Track old values for summary
+                      # Track old values for summary.
+                      # The _*_changed flags are derived HERE, not assigned inside the
+                      # `then:` blocks below: a `- variables:` step inside `then:` only
+                      # shadows within that block, so those assignments never reached
+                      # the summary and every run reported "no change".
                       - variables:
                           _fn_start: "{{ now().timestamp() }}"
-                          _old_self_clean: "{{ is_state(self_clean_switch, 'on') if has_value(self_clean_switch) else 'n/a' }}"
+                          _old_self_clean: "{{ is_state(self_clean_switch, 'on') if has_value(self_clean_switch) else false }}"
                           _old_customized: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
                           _old_sequence: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                          _self_clean_changed: false
-                          _customized_changed: false
-                          _sequence_changed: false
+                          _self_clean_changed: "{{ has_value(self_clean_switch) and not (is_state(self_clean_switch, 'on')) }}"
+                          _customized_changed: >
+                            {{ has_customized_cleaning and current_mode in mop_modes
+                               and is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}
+                          _sequence_changed: >
+                            {{ has_cleaning_sequence
+                               and is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}
 
                       # Ensure self_clean is ALWAYS ON for base station cleaning
-                      - if: "{{ has_value(self_clean_switch) and is_state(self_clean_switch, 'off') }}"
+                      - if: "{{ _self_clean_changed }}"
                         then:
                           - action: switch.turn_on
                             target:
                               entity_id: "{{ self_clean_switch }}"
-                          - variables:
-                              _self_clean_changed: true
 
                       # Enable customized cleaning features (base station map)
-                      - if: "{{ has_customized_cleaning and current_mode in mop_modes }}"
+                      - if: "{{ _customized_changed }}"
                         then:
-                          - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'off') }}"
-                            then:
-                              - action: switch.turn_on
-                                target:
-                                  entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
-                              - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
-                                timeout: 5
-                                continue_on_timeout: false
-                              - variables:
-                                  _customized_changed: true
+                          - action: switch.turn_on
+                            target:
+                              entity_id: "switch.{{ vacuum_base_name }}_customized_cleaning"
+                          - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
+                            timeout: 5
+                            continue_on_timeout: false
 
-                      - if: "{{ has_cleaning_sequence }}"
+                      - if: "{{ _sequence_changed }}"
                         then:
-                          - if: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'off') }}"
-                            then:
-                              - action: switch.turn_on
-                                target:
-                                  entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
-                              - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
-                                timeout: 5
-                                continue_on_timeout: false
-                              - variables:
-                                  _sequence_changed: true
+                          - action: switch.turn_on
+                            target:
+                              entity_id: "switch.{{ vacuum_base_name }}_cleaning_sequence"
+                          - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
+                            timeout: 5
+                            continue_on_timeout: false
 
                       # Start cleaning
                       - variables:
@@ -2291,11 +2240,18 @@ actions:
                       _old_customized: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
                       _old_sequence: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
                       _old_self_clean: "{{ is_state(self_clean_switch, 'on') if has_value(self_clean_switch) else false }}"
-                      _stopped_drying: false
-                      _wash_duration: 0
-                      _customized_changed: false
-                      _sequence_changed: false
-                      _self_clean_changed: false
+                      # Derived here, not inside the `then:` blocks below: a
+                      # `- variables:` step inside `then:` only shadows within that
+                      # block, so those assignments never reached the summary.
+                      _stopped_drying: "{{ current_mode in mop_modes and states(self_wash_base_status_sensor) == 'drying' }}"
+                      _customized_changed: >
+                        {{ has_customized_cleaning and current_mode in mop_modes
+                           and not is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}
+                      _sequence_changed: >
+                        {{ has_cleaning_sequence
+                           and not is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}
+                      _self_clean_changed: "{{ has_value(self_clean_switch) and is_state(self_clean_switch, 'on') }}"
+                      _wash_start: "{{ now().timestamp() }}"
 
                   # Mop readiness check for smart start (non-base station)
                   - if: "{{ _is_mop_mode and not mop_ready }}"
@@ -2318,7 +2274,7 @@ actions:
                   - if: "{{ _is_mop_mode }}"
                     then:
                       # Stop drying if active
-                      - if: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') == 'drying' }}"
+                      - if: "{{ _stopped_drying }}"
                         then:
                           - action: button.press
                             continue_on_error: true
@@ -2327,12 +2283,8 @@ actions:
                           - wait_template: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') != 'drying' }}"
                             timeout: 10
                             continue_on_timeout: true
-                          - variables:
-                              _stopped_drying: true
 
                       # Start manual mop washing
-                      - variables:
-                          _wash_start: "{{ now().timestamp() }}"
                       - action: button.press
                         continue_on_error: true
                         target:
@@ -2348,7 +2300,6 @@ actions:
                           seconds: "{{ moistening_timeout }}"
                         continue_on_timeout: true
                       - variables:
-                          _wash_duration: "{{ (now().timestamp() - _wash_start) | round(0) | int }}"
                           _current_base_status: "{{ states('sensor.' ~ vacuum_base_name ~ '_self_wash_base_status') }}"
 
                       # Force-stop if timeout and still washing/drying
@@ -2369,6 +2320,10 @@ actions:
                           - delay:
                               seconds: 3
 
+                  # Measured at branch level so the summary can actually read it
+                  - variables:
+                      _wash_duration: "{{ ((now().timestamp() - _wash_start) | round(0) | int) if _is_mop_mode else 0 }}"
+
                   # Skip start if delay=0 (keep robot docked)
                   - if: "{{ pause_delay_after_undock == 0 }}"
                     then:
@@ -2384,7 +2339,7 @@ actions:
                       - stop: "Delay is 0, robot stays docked"
 
                   # Enable customized cleaning features
-                  - if: "{{ has_customized_cleaning and _is_mop_mode and not _old_customized }}"
+                  - if: "{{ _customized_changed }}"
                     then:
                       - action: switch.turn_on
                         target:
@@ -2392,10 +2347,8 @@ actions:
                       - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') }}"
                         timeout: 5
                         continue_on_timeout: false
-                      - variables:
-                          _customized_changed: true
 
-                  - if: "{{ has_cleaning_sequence and not _old_sequence }}"
+                  - if: "{{ _sequence_changed }}"
                     then:
                       - action: switch.turn_on
                         target:
@@ -2403,17 +2356,13 @@ actions:
                       - wait_template: "{{ is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') }}"
                         timeout: 5
                         continue_on_timeout: false
-                      - variables:
-                          _sequence_changed: true
 
                   # Disable self_clean BEFORE start (prevent auto-return to station)
-                  - if: "{{ has_value(self_clean_switch) and _old_self_clean }}"
+                  - if: "{{ _self_clean_changed }}"
                     then:
                       - action: switch.turn_off
                         target:
                           entity_id: "{{ self_clean_switch }}"
-                      - variables:
-                          _self_clean_changed: true
 
                   # Start cleaning
                   - variables:
@@ -3368,15 +3317,37 @@ actions:
                 timeout: 30
                 continue_on_timeout: false
 
+              # Let the newly selected map finish loading before reading its rooms
+              - delay:
+                  seconds: 5
+
+              # Re-read the segments AFTER the switch. The top-level map_segments is
+              # computed when the trigger fires, i.e. from the map that was loaded
+              # BEFORE the switch - using it here sent the previous floor's room ids
+              # to the new map.
+              - variables:
+                  _schedule_segments: >
+                    {% if has_value(map_camera) %}
+                      {% set rooms = state_attr(map_camera, 'rooms') %}
+                      {% if rooms is mapping %}
+                        {{ rooms.values() | map(attribute='room_id') | list }}
+                      {% else %}
+                        {% set segs = state_attr(map_camera, 'segments') %}
+                        {{ (segs.keys() | map('int') | list) if segs is mapping else [] }}
+                      {% endif %}
+                    {% else %}
+                      []
+                    {% endif %}
+
               # Start cleaning
-              - if: "{{ use_segment_service and has_segments }}"
+              - if: "{{ use_segment_service and _schedule_segments | length > 0 }}"
                 then:
                   - action: dreame_vacuum.vacuum_clean_segment
                     continue_on_error: true
                     target:
                       entity_id: "{{ vacuum_entity }}"
                     data:
-                      segments: "{{ map_segments }}"
+                      segments: "{{ _schedule_segments }}"
                       repeats: "{{ target_map_config.cleaning_repeats }}"
                 else:
                   - action: vacuum.start
@@ -3960,53 +3931,6 @@ actions:
                     └─ ✔ **Skip:** user action
 
       # ========================================
-      # EMERGENCY WATCH: Unexpected Cleaning Start
-      # ========================================
-      # Validates map selection when cleaning starts outside our workflow
-      # Pauses robot if selected map is not one of our configured maps
-      - conditions:
-          - condition: template
-            value_template: "{{ trigger.id == 'emergency_watch' }}"
-        sequence:
-          # Safety check: Validate selected map
-          - if:
-              - condition: template
-                value_template: "{{ states(selected_map_select) not in [map_1_name, map_2_name, map_3_name, map_4_name] }}"
-            then:
-              # Invalid map → Emergency pause (always show)
-              - action: vacuum.pause
-                target:
-                  entity_id: "{{ vacuum_entity }}"
-
-              - action: persistent_notification.create
-                data:
-                  title: "⚠️ Emergency Pause"
-                  notification_id: "vacuum_emergency_pause"
-                  message: |
-                    {{ now().strftime('%H:%M:%S') }}
-
-                    ├─ ⚠️ **Map:** {{ states(selected_map_select) }}
-                    └─ ✔ **Pause:** emergency
-
-                    ❌ Automation aborted
-                    **Valid:** {{ map_1_name }}, {{ map_2_name }}, {{ map_3_name }}, {{ map_4_name }}
-
-              - stop: "Emergency pause - invalid map selected"
-                error: true
-
-          # Map is valid → Continue (external start on valid map)
-          - if: "{{ debug_info }}"
-            then:
-              - action: persistent_notification.create
-                data:
-                  title: "▶️ External Start"
-                  notification_id: "vacuum_external_start"
-                  message: |
-                    {{ now().strftime('%H:%M:%S') }}
-
-                    └─ ✔ **Map:** {{ states(selected_map_select) }}
-
-      # ========================================
       # NOTIFICATION ACTION: Start Cleaning
       # ========================================
       - conditions:
@@ -4107,6 +4031,25 @@ actions:
           - condition: template
             value_template: "{{ trigger.id == 'auto_switch_to_base' }}"
         sequence:
+          # Restore self_clean now that the robot is back on a dock.
+          #
+          # The transport workflow switches self_clean OFF before sending the robot to
+          # a floor that has no base station, so it does not drive off looking for one
+          # it cannot reach. Nothing turned it back on: the setting stayed off until the
+          # next base-map start happened to force it, so a mop run in between silently
+          # skipped washing. This trigger fires exactly when the robot docks, which is
+          # the moment the setting is safe - and wanted - again.
+          #
+          # Deliberately ahead of every guard below: the restore must happen even when
+          # auto-switch is disabled, the robot is already on the base map, or one of the
+          # other early exits applies.
+          - if: "{{ has_value(self_clean_switch) and is_state(self_clean_switch, 'off') }}"
+            then:
+              - action: switch.turn_on
+                continue_on_error: true
+                target:
+                  entity_id: "{{ self_clean_switch }}"
+
           # Feature flag check
           - if:
               - condition: template

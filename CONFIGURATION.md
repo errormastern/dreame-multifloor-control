@@ -368,7 +368,6 @@ Sends notifications for scheduled cleaning and pickup events.
 
 **Features:**
 - Actionable buttons for quick response
-- Automatic repeat reminders
 - Presence-based filtering (persons only)
 
 ### 👤 Persons to Notify
@@ -407,26 +406,6 @@ Notification message for scheduled cleaning events. Supports template variables 
 
 **Example output:** "Robot Name is ready for scheduled cleaning on Living Room (Sweep+Mop). Please prepare the robot."
 
-### 📅 Schedule Repeat Count
-**Default:** 2 (range: 1-3)
-
-Number of reminder notifications if no response to "Prepare Robot" button.
-
-**Behavior:**
-- Sends initial notification when schedule triggers
-- Resends reminder after interval if no action taken
-- Stops after reaching repeat count or button pressed
-
-### 📅 Schedule Repeat Interval
-**Default:** 15 minutes (range: 0-240)
-
-Time between reminder notifications.
-
-**Settings:**
-- `0`: No repeats (single notification only)
-- `5-30`: Frequent reminders
-- `60+`: Occasional reminders
-
 ### 🤖 Pickup Notification Title
 **Default:** "Robot Ready for Transport"
 
@@ -438,25 +417,6 @@ Notification title when robot is paused and ready for manual transport. Supports
 Notification message for pickup events. Supports template variables (see table below).
 
 **Example output:** "Robot Name is paused and ready for transport to Living Room. Please pick up the robot."
-
-### 🤖 Pickup Repeat Count
-**Default:** 2 (range: 1-3)
-
-Number of reminder notifications if no response to "Start Cleaning" button.
-
-**Behavior:**
-- Sends when robot paused and ready for pickup
-- Resends reminder if cleaning not started
-- Stops after button pressed or repeat count reached
-
-### 🤖 Pickup Repeat Interval
-**Default:** 10 minutes (range: 0-240)
-
-Time between pickup reminder notifications.
-
-**Typical values:**
-- `5-15`: Robot waiting for immediate transport
-- `30+`: Flexible pickup time
 
 ### 📱 iOS Interruption Level
 **Default:** time-sensitive
@@ -511,7 +471,6 @@ Volume level for critical alert sound.
 | `map_name` | Current/target map name |
 | `cleaning_mode_display` | Localised mode text (e.g., "Sweep+Mop") |
 | `current_time` | Notification time (HH:MM format) |
-| `repeat_number` | Current repeat iteration count |
 
 ---
 
