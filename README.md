@@ -18,11 +18,11 @@ A Home Assistant blueprint for controlling Dreame vacuums across multiple floors
 ✨ Optional customised cleaning using room settings from Dreame app<br>
 ⚠️ Safety checks: schedule conflicts, robot and cleaning options, dock status, mop readiness<br>
 🗺️ Auto-discard temporary maps for seamless multi-floor operation<br>
-🏠 **Auto-Switch-Back to Base Map** after multi-floor cleaning **(v0.9.14+)**<br>
-🏠 **Base station map pinned by name** instead of guessed from map data **(v0.11.0+)**<br>
-💧 **Sweep-then-mop** (`mopping_after_sweeping`) selectable as the mop program **(v0.11.0+)**<br>
-🚪 **Single-room cleaning** with the full preparation workflow **(v0.11.0+)**<br>
-🏷️ **Map sections bound by name**, so slot re-sorts cannot move a schedule to the wrong floor **(v0.12.0+)**<br>
+🏠 **Auto-Switch-Back to Base Map** after multi-floor cleaning<br>
+🏠 **Base station map pinned by name** instead of guessed from map data<br>
+💧 **Sweep-then-mop** (`mopping_after_sweeping`) selectable as the mop program<br>
+🚪 **Single-room cleaning** with the full preparation workflow<br>
+🏷️ **Map sections bound by name**, so slot re-sorts cannot move a schedule to the wrong floor<br>
 🐛 Debug mode with timing measurements
 
 
@@ -113,8 +113,8 @@ Direct control via buttons, switches, or other triggers.
 | **Sweep + Mop Mode** | Sets cleaning mode with mop enabled for full cleaning. |
 | **Smart Start/Pause/Resume** | Context-aware control – adapts to robot status. See details below. |
 | **Map 1 – Map 4** | Switches to the map configured in that section. |
-| **Switch Map By Name** | Switches to a map by its name — for dashboards, scripts and voice commands (v0.12.0+). |
-| **Single Room Cleaning** | Cleans one room with the full preparation workflow (v0.11.0+). |
+| **Switch Map By Name** | Switches to a map by its name — for dashboards, scripts and voice commands. |
+| **Single Room Cleaning** | Cleans one room with the full preparation workflow. |
 
 
 ### ⚡ Trigger Setup
@@ -139,7 +139,7 @@ The blueprint employs timeouts as a safety fallback mechanism to ensure the prep
 
 Adjust these in the blueprint configuration if your robot behaves differently. Check Debug Messages for measured timings.
 
-## 🏠 Auto-Switch-Back to Base Map (v0.9.14+)
+## 🏠 Auto-Switch-Back to Base Map
 
 Automatically switches back to the base station map after completing a multi-floor cleaning task.
 
@@ -153,7 +153,7 @@ Automatically switches back to the base station map after completing a multi-flo
 
 **Example:** Robot cleans "upper floor" → manually returned to dock → auto-switches back to "livingroom" (base station map)
 
-## 🏠 Base Station Map (v0.11.0+)
+## 🏠 Base Station Map
 
 Set **Map Functions → Base Station Map** to the name of the map your base station
 physically stands on, exactly as it appears in `select.{robot}_selected_map`.
@@ -171,7 +171,7 @@ floor that actually has the dock, and starts cleaning immediately on a floor wit
 one. If the configured name matches no map, the blueprint raises a notification listing
 the available names and falls back to auto-detection rather than silently misfiring.
 
-## 🏷️ Map Sections Bound By Name (v0.12.0+)
+## 🏷️ Map Sections Bound By Name
 
 Each **Map 1…4** section has a **Map Name** field. Fill it with the map's name exactly as
 it appears in `select.{robot}_selected_map`, and that section — its schedules, its map
@@ -182,8 +182,8 @@ the robot auto-creates a map, the slots re-sort, and a section bound to slot 4 s
 starts driving whichever map now sits there. A Tuesday-morning mop schedule for the
 ground floor ends up mopping a bedroom, with nothing in the logs to say so.
 
-Leave the field empty and the section falls back to "whatever occupies slot N" — the
-pre-0.12.0 behaviour — so existing automations are unaffected until you fill it in.
+Leave the field empty and the section falls back to whichever map currently occupies
+slot N.
 
 ### Switching maps from outside the blueprint
 
@@ -203,7 +203,7 @@ cannot know which section holds which map — and a caller that resolves the nam
 slot itself breaks on the next re-sort. An unknown name aborts with a notification
 listing the maps that are actually available.
 
-## 💧 Sweep-Then-Mop (v0.11.0+)
+## 💧 Sweep-Then-Mop
 
 **Advanced Settings → Mode Value: Mop Program** picks which mode every mop path selects
 — the mop trigger, the mop schedules, the prepare notification and single-room mopping:
@@ -223,7 +223,7 @@ Whichever value you pick, the current mode is still recognised as mopping if it 
 known wet mode — so a robot set from the Dreame app still gets its mop-readiness check
 and mop wash.
 
-## 🚪 Single Room Cleaning (v0.11.0+)
+## 🚪 Single Room Cleaning
 
 **Control Functions → Single Room Cleaning Trigger** cleans exactly one room, running
 the same preparation workflow as a whole-map clean. The trigger matches only `fn`; the

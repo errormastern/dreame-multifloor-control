@@ -61,8 +61,7 @@ you meant.
 **What follows the name:** everything in the section — both schedules, the map switch
 trigger and the repeat count — plus the base-station comparison.
 
-**Leave it empty** and the section behaves as before 0.12.0, using whichever map occupies
-slot N. Existing automations are unaffected until you fill it in.
+**Leave it empty** and the section uses whichever map currently occupies slot N.
 
 > **Note:** If the name matches no saved map, the section falls back to the slot. Rename
 > a map in the Dreame app and you must update it here too — but a mismatch is visible,
@@ -87,7 +86,7 @@ Trigger that switches to this map and starts cleaning workflow.
 **Configuration:**
 - Leave empty for schedule-only maps
 - Device/MQTT triggers: Action auto-detected from payload
-- State/Event triggers: **Must** set Trigger ID to `fn_map1` (or `fn_map2`, `fn_map3`)
+- State/Event triggers: **Must** set Trigger ID to `fn_map1` … `fn_map4`, matching the section
 
 **Example triggers:**
 - MQTT button press
@@ -96,9 +95,9 @@ Trigger that switches to this map and starts cleaning workflow.
 - Event trigger (custom event)
 
 ### 📅 Sweep-Only Schedule
-**Default:** "none"
+**Default:** empty
 
-Schedule entity for automatic sweep-only cleaning at specified times.
+Schedule entities for automatic sweep-only cleaning. Several may be selected.
 
 **Setup:**
 1. Create schedule helper: Settings → Helpers → Schedule
@@ -106,9 +105,9 @@ Schedule entity for automatic sweep-only cleaning at specified times.
 3. Select helper here
 
 ### 📅 Sweep+Mop Schedule
-**Default:** "none"
+**Default:** empty
 
-Schedule entity for automatic sweep+mop cleaning at specified times.
+Schedule entities for automatic sweep+mop cleaning. Several may be selected.
 
 **Setup:** Same as sweep-only schedule (separate helper required).
 
@@ -147,17 +146,14 @@ not block cleaning.
 Automatically switches back to base station map when room cleaning completes on a different floor.
 
 **How it works:**
-- Monitors task status sensor for "completed" state
-- Only triggers after actual cleaning (not washing/drying cycles)
-- Skips if already on base map
-- 20s safety buffer prevents interference with schedule preparation
+- Fires when the vacuum reports `docked`
+- Restores `self_clean` first — the transport workflow switches it off so the robot does
+  not hunt for a dock on a floor without one, and docking is the moment it is safe again
+- Skips the map switch if already on the base map, during washing/drying, while a
+  preparation is in progress, or within 20 s of a transport pause
 
-**Use case:** Clean upstairs → manually return robot to dock → auto-switches to base map.
-
-### 🔍 Task Status Sensor
-**Auto-detected:** `sensor.*_task_status`
-
-Sensor used to detect cleaning completion for auto-switch-back feature. Auto-detected for most robots - only needs manual selection if detection fails.
+**Use case:** Clean upstairs → carry the robot back to the dock → it switches to the base
+map on its own.
 
 ### 🗺️ Auto-Discard Temporary Maps
 **Default:** Enabled
