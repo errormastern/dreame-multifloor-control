@@ -2,7 +2,7 @@ blueprint:
   name: "🤖 Dreame Vacuum – Multi-Floor Control"
   description: |
     **🤖 Dreame Vacuum – Multi-Floor Control**
-    *Version: 0.13.0*
+    *Version: 0.13.1*
 
     A Home Assistant blueprint for controlling Dreame vacuums across multiple floors.
     Supports scheduled cleaning with automatic preparation and transport notifications for non-base-station maps and manual control via buttons or other triggers. **Never care about the right robot settings for seamless multi-floor cleaning again.**
@@ -2398,8 +2398,13 @@ actions:
                       {{ states('sensor.' ~ vacuum_base_name ~ '_state') in start_detect_states }}
                     timeout: 30
                     continue_on_timeout: true
+                  # Captured right here, not in the summary: by the time the summary
+                  # renders the robot has been paused, so reading the sensor there would
+                  # report 'paused' as the start state.
                   - variables:
                       _start_detected: "{{ wait.completed }}"
+                      _start_state: "{{ states('sensor.' ~ vacuum_base_name ~ '_state') }}"
+                      _start_latency: "{{ ((30 - (wait.remaining | default(0, true))) | round(1)) if wait.completed else 30 }}"
 
                   # Delay to allow robot to move away from station
                   - delay:
@@ -2425,9 +2430,9 @@ actions:
                             {% endif %}{% if has_customized_cleaning %}├─ ✔ **Customized:** {% if _customized_changed %}off → **on**{% else %}{{ 'on' if is_state('switch.' ~ vacuum_base_name ~ '_customized_cleaning', 'on') else 'off' }}{% endif %}
                             {% endif %}{% if has_cleaning_sequence %}├─ ✔ **Sequence:** {% if _sequence_changed %}off → **on**{% else %}{{ 'on' if is_state('switch.' ~ vacuum_base_name ~ '_cleaning_sequence', 'on') else 'off' }}{% endif %}
                             {% endif %}{% if has_value(self_clean_switch) %}├─ ✔ **Self-Clean:** {% if _self_clean_changed %}on → **off**{% else %}off{% endif %}
-                            {% endif %}├─ {% if _start_detected %}✔{% else %}⚠️{% endif %} **Start:** {{ states('sensor.' ~ vacuum_base_name ~ '_state') }}{% if not _start_detected %} (not detected within 30s){% endif %}
+                            {% endif %}├─ {% if _start_detected %}✔ **Started:** {{ _start_state }} · {{ _start_latency }}s{% else %}⚠️ **Started:** not detected within 30s · paused anyway{% endif %}
                             ├─ ✔ **Delay:** {{ pause_delay_after_undock }}s
-                            └─ ✔ **Pause:** paused
+                            └─ ✔ **Paused:** for pickup
 
                             **Map:** {{ current_map_name }}
                             **Cleaning-Mode:** {{ current_mode | replace('_', ' ') | title }}
@@ -3047,13 +3052,18 @@ actions:
 
               # See fn_start: never narrow per mode, never abort on timeout - the
               # pause below is the safety action.
+              - variables:
+                  _start_timeout: "{{ mop_start_timeout if room_target_is_mop else 30 }}"
               - wait_template: >
                   {{ states('sensor.' ~ vacuum_base_name ~ '_state') in start_detect_states }}
                 timeout:
-                  seconds: "{{ mop_start_timeout if room_target_is_mop else 30 }}"
+                  seconds: "{{ _start_timeout }}"
                 continue_on_timeout: true
+              # Captured at detection time - the summary renders after the pause
               - variables:
                   _start_detected: "{{ wait.completed }}"
+                  _start_state: "{{ states('sensor.' ~ vacuum_base_name ~ '_state') }}"
+                  _start_latency: "{{ ((_start_timeout | int - (wait.remaining | default(0, true))) | round(1)) if wait.completed else _start_timeout }}"
 
               # Let the robot clear the dock, then pause for manual transport
               - delay:
@@ -3134,9 +3144,9 @@ actions:
                         ├─ ✔ **Cleaning-Mode:** {{ states(cleaning_mode_select) }}
                         {% if _stopped_drying %}├─ ✔ **Stop Drying:** idle
                         {% endif %}{% if room_target_is_mop %}├─ ✔ **Wash & Refill:** {{ _wash_duration }}s
-                        {% endif %}├─ {% if _start_detected %}✔{% else %}⚠️{% endif %} **Start:** {{ states('sensor.' ~ vacuum_base_name ~ '_state') }}{% if not _start_detected %} (not detected){% endif %}
+                        {% endif %}├─ {% if _start_detected %}✔ **Started:** {{ _start_state }} · {{ _start_latency }}s{% else %}⚠️ **Started:** not detected within {{ _start_timeout }}s · paused anyway{% endif %}
 
-                        ├─ ✔ **Pause:** for transport
+                        ├─ ✔ **Paused:** for pickup
                         └─ ✔ **Notify:** {{ 'sent' if notification_enabled else 'disabled' }}
 
                         **Active Segments:** {{ state_attr(vacuum_entity, 'active_segments') }}
@@ -3906,7 +3916,7 @@ actions:
                     ├─ ✔ **Cleaning-Mode:** {% if _mode_changed %}{{ _old_mode }} → **{{ _new_mode }}**{% else %}{{ _new_mode }}{% endif %}
                     {% if _is_mop %}├─ ✔ **Wash & Refill:** complete
                     {% endif %}├─ ✔ **Start:** {{ 'segments' if use_segment_service else 'vacuum.start' }}
-                    ├─ ✔ **Pause:** paused
+                    ├─ ✔ **Paused:** for pickup
                     └─ ✔ **Notify:** {{ 'sent' if notification_enabled else 'disabled' }}
 
                     **Schedule:** {{ schedule_label }}
