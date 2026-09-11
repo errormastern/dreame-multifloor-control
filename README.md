@@ -112,7 +112,9 @@ Direct control via buttons, switches, or other triggers.
 | **Sweep Only Mode** | Sets cleaning mode to sweep-only for quick cleaning without mopping. |
 | **Sweep + Mop Mode** | Sets cleaning mode with mop enabled for full cleaning. |
 | **Smart Start/Pause/Resume** | Context-aware control – adapts to robot status. See details below. |
-| **Map 1 / Map 2 / Map 3** | Switches between floor maps for multi-floor setups. |
+| **Map 1 – Map 4** | Switches to the map configured in that section. |
+| **Switch Map By Name** | Switches to a map by its name — for dashboards, scripts and voice commands (v0.12.0+). |
+| **Single Room Cleaning** | Cleans one room with the full preparation workflow (v0.11.0+). |
 
 
 ### ⚡ Trigger Setup
@@ -120,7 +122,7 @@ Direct control via buttons, switches, or other triggers.
 Use any Home Assistant trigger type. MQTT and device triggers auto-detect action values from the payload.
 
 > [!WARNING]
-> For state or event triggers, you must set a **Trigger ID** manually (e.g., `fn_start`, `fn_sweep_mode`). 
+> For state or event triggers, you must set a **Trigger ID** manually (e.g., `fn_start`, `fn_sweep`, `fn_map_named`). 
 Without an ID, the automation cannot determine which function to execute.
 
 
@@ -130,8 +132,9 @@ The blueprint employs timeouts as a safety fallback mechanism to ensure the prep
 
 | Timeout | Default | Purpose |
 |---------|---------|---------|
-| **Start Timeout** | 120s | Max wait for robot to move out of the basestation after start/preparation |
-| **Moistening Timeout** | 60s | Max wait for mop washing to complete (sweep+mop mode) |
+| **Sweep Start Timeout** | 30s | Max wait for the robot to start a sweep-only run |
+| **Mop Start Timeout** | 120s | Max wait for mop washing to start, and for the robot to start after washing |
+| **Moistening Timeout** | 215s | Max wait for mop washing to complete |
 | **Move Out Delay** | 4.5s | Delay before pausing after undock – allows robot to move a bit away from charging contacts |
 
 Adjust these in the blueprint configuration if your robot behaves differently. Check Debug Messages for measured timings.
@@ -140,9 +143,7 @@ Adjust these in the blueprint configuration if your robot behaves differently. C
 
 Automatically switches back to the base station map after completing a multi-floor cleaning task.
 
-**Configuration:**
-1. Enable/disable via Advanced Settings (default: enabled)
-2. Select task status sensor: `sensor.{vacuum_name}_task_status`
+**Configuration:** enable/disable via **Map Functions** (default: enabled). It fires when the vacuum reports `docked`; no sensor to configure.
 
 **Smart Behavior:**
 - Only triggers after room/floor cleaning (not washing/drying)
